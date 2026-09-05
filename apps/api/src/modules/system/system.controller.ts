@@ -1,4 +1,4 @@
-import { Controller, Post, UseGuards } from '@nestjs/common';
+import { Controller, Post, Headers } from '@nestjs/common';
 import { SystemService } from './system.service';
 
 @Controller('api/system')
@@ -6,8 +6,7 @@ export class SystemController {
   constructor(private readonly systemService: SystemService) {}
 
   @Post('update')
-  // Ideally, add a strict @UseGuards() here for Admin-only access
-  async triggerUpdate() {
-    return this.systemService.triggerUpdate();
+  async triggerUpdate(@Headers('authorization') authHeader: string) {
+    return this.systemService.triggerUpdate(authHeader);
   }
 }

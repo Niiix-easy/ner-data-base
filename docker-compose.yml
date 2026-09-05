@@ -179,6 +179,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/neer-data-base
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/app
     command: >
       sh -c "cd /app/packages/database && npx prisma db push && npm run seed && cd ../../apps/api && npm start"
     ports:
