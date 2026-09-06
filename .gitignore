@@ -26,3 +26,9 @@ types/database.ts
 *.log
 .DS_Store
 Thumbs.db
+fix_docker.sh
+fix.patch
+fix.patch
+fix_docker.sh
+node_modules/
+apps/api/dist/

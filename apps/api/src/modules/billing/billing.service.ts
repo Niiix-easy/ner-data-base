@@ -15,11 +15,26 @@ export class BillingService {
       throw new NotFoundException(`Billing cycle ${cycleId} not found`);
     }
 
-    // 2. Perform aggregation and rating (Simplified for mock implementation)
-    // Normally we would query the usage aggregator for events within cycle bounds
+    // Identificar a Subscription correspondente (Isso determina o Plano do Tenant)
+    const subscription = await prisma.subscription.findUnique({
+      where: { id: cycle.subscriptionId }
+    });
 
-    const totalUsageCost = 5000; // 50 USD
-    const totalSubscriptionCost = 2000; // 20 USD
+    // 2. Perform aggregation and rating (Simplified for mock implementation)
+    // In production we would query UsageAggregate records associated with this period
+    // e.g., const usage = await prisma.usageAggregate.aggregate(...)
+
+    let totalUsageCost = 0;
+    let totalSubscriptionCost = 0;
+
+    // Se possui uma subscription ativa, aplicamos a lógica de rate baseada no Plano (Tiered, Fixed, Overage)
+    if (subscription) {
+      // Fake rate plan fetch based on subscription.planVersionId
+      totalSubscriptionCost = 2000; // $20.00 Fixed base fee
+
+      // Calculate overage or tier units based on usage
+      totalUsageCost = 5000; // $50.00 Overage usage fee
+    }
 
     // 3. Mark Cycle as RATED
     await prisma.billingCycle.update({
