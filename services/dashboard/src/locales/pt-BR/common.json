@@ -1,0 +1,45 @@
+{
+  "brand": "Neer-Data-Base",
+  "positioning": "A plataforma de infraestrutura em nuvem para criar, publicar e escalar aplicações modernas.",
+  "login": {
+    "title": "Acesso ao Painel",
+    "subtitle": "Faça login com suas credenciais de administrador.",
+    "username": "Nome de usuário",
+    "password": "Senha",
+    "signIn": "Entrar",
+    "signingIn": "Entrando...",
+    "resetPassword": "Resetar senha",
+    "createPassword": "Fazer nova senha"
+  },
+  "landing": {
+    "description": "A poderosa plataforma Backend-as-a-Service, totalmente focada no seu ambiente local ZimaOS. Gerencie bancos de dados, execute funções na borda e faça upload de arquivos com total segurança e privacidade.",
+    "features": [
+      "Editor SQL Inteligente integrado",
+      "Edge Functions com Deno",
+      "Gerenciamento Visual de Storage S3",
+      "100% self-hosted e seguro"
+    ]
+  },
+  "sidebar": {
+    "overview": "Visão geral do projeto",
+    "tableEditor": "Editor de tabelas",
+    "sqlEditor": "Editor SQL",
+    "database": "Banco de dados",
+    "auth": "Autenticação",
+    "storage": "Armazenar",
+    "functions": "Funções de Borda",
+    "realtime": "Em tempo real",
+    "advisors": "Conselheiros",
+    "observability": "Observabilidade",
+    "logs": "Registros",
+    "integrations": "Integrações",
+    "settings": "Configurações do projeto",
+    "webhooks": "Webhooks",
+    "search": "Buscador do projeto",
+    "account": "Configurações da conta",
+    "ai": "Assistente de IA",
+    "consultants": "Central de consultores",
+    "help": "Ajuda",
+    "pricing": "Preços e Assinaturas"
+  }
+}

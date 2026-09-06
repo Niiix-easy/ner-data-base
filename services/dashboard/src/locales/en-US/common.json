@@ -1,0 +1,45 @@
+{
+  "brand": "Neer-Data-Base",
+  "positioning": "The infrastructure platform for building, deploying and scaling modern applications.",
+  "login": {
+    "title": "Panel Access",
+    "subtitle": "Sign in with your administrator credentials.",
+    "username": "Username",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in...",
+    "resetPassword": "Reset password",
+    "createPassword": "Create new password"
+  },
+  "landing": {
+    "description": "A global cloud infrastructure platform for building, deploying and scaling modern applications. Manage databases, execute edge functions, and upload files with complete security and privacy.",
+    "features": [
+      "Integrated Smart SQL Editor",
+      "Edge Functions with Deno",
+      "S3 Visual Storage Management",
+      "100% self-hosted and secure"
+    ]
+  },
+  "sidebar": {
+    "overview": "Project Overview",
+    "tableEditor": "Table Editor",
+    "sqlEditor": "SQL Editor",
+    "database": "Database",
+    "auth": "Authentication",
+    "storage": "Storage",
+    "functions": "Edge Functions",
+    "realtime": "Realtime",
+    "advisors": "Advisors",
+    "observability": "Observability",
+    "logs": "Logs",
+    "integrations": "Integrations",
+    "settings": "Project Settings",
+    "webhooks": "Webhooks",
+    "search": "Project Search",
+    "account": "Account Settings",
+    "ai": "AI Assistant",
+    "consultants": "Consultants Center",
+    "pricing": "Pricing & Billing",
+    "help": "Help"
+  }
+}

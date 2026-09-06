@@ -1,4 +1,4 @@
-name: neercloud
+name: neer-data-base
 
 # ─────────────────────────────────────────────────────────────────────
 # Pensado para rodar em hardware doméstico modesto (ex: ZimaBoard/ZimaOS).
@@ -18,11 +18,11 @@ x-postgres-common: &postgres-common
   image: postgres:16-alpine
   environment:
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    POSTGRES_DB: neercloud
+    POSTGRES_DB: neer-data-base
     AUTHENTICATOR_PASSWORD: ${AUTHENTICATOR_PASSWORD}
     AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
   volumes:
-    - ${DATA_PATH:-./neercloud-data}/postgres:/var/lib/postgresql/data
+    - ${DATA_PATH:-./neer-data-base-data}/postgres:/var/lib/postgresql/data
     - ./services/postgres/init:/docker-entrypoint-initdb.d
   healthcheck:
     test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -35,11 +35,11 @@ services:
   # ── Núcleo: PostgreSQL ─────────────────────────────────────────────
   postgres:
     <<: *postgres-common
-    container_name: neercloud-postgres
+    container_name: neer-data-base-postgres
     profiles: ["core"]
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
-    networks: [neercloud]
+    networks: [neer-data-base]
 
   # ── Connection Pooling (PgBouncer) ──────────────────────────────────
   # NOTA DE PRODUÇÃO: usa AUTH_TYPE=trust + usuário único de backend.
@@ -48,7 +48,7 @@ services:
   # prefira Supavisor ou configure scram-sha-256 + userlist.txt.
   pooler:
     image: edoburu/pgbouncer:latest
-    container_name: neercloud-pooler
+    container_name: neer-data-base-pooler
     profiles: ["core"]
     depends_on:
       postgres:
@@ -58,7 +58,7 @@ services:
       DB_PORT: "5432"
       DB_USER: postgres
       DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_NAME: neercloud
+      DB_NAME: neer-data-base
       POOL_MODE: transaction
       MAX_CLIENT_CONN: "500"
       DEFAULT_POOL_SIZE: "15"
@@ -67,109 +67,45 @@ services:
     ports:
       - "${POOLER_PORT:-6432}:6432"
     mem_limit: ${POOLER_MEM_LIMIT:-64m}
-    networks: [neercloud]
+    networks: [neer-data-base]
 
   # ── REST automático a partir das tabelas ───────────────────────────
   rest:
     image: postgrest/postgrest:latest
-    container_name: neercloud-rest
+    container_name: neer-data-base-rest
     profiles: ["core"]
     depends_on:
       pooler:
         condition: service_started
     environment:
-      PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD}@pooler:6432/neercloud
+      PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD}@pooler:6432/neer-data-base
       PGRST_DB_SCHEMAS: public
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET}
       PGRST_JWT_AUD: authenticated
     mem_limit: ${REST_MEM_LIMIT:-128m}
-    networks: [neercloud]
-
-  # ── Auth (login, OAuth, JWT, MFA) ───────────────────────────────────
-  # NOTA: `${VAR:+true}` exige Docker Compose v2 (plugin `docker compose`,
-  # não o binário antigo `docker-compose` v1). ZimaOS já vem com v2.
-  auth:
-    image: supabase/gotrue:latest
-    container_name: neercloud-auth
-    profiles: ["core"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      GOTRUE_API_HOST: 0.0.0.0
-      GOTRUE_API_PORT: 9999
-      GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${AUTH_DB_PASSWORD}@postgres:5432/neercloud
-      GOTRUE_DB_NAMESPACE: auth
-      # Troque pelo IP/host real do seu ZimaOS na rede local — "localhost"
-      # só funciona quando você acessa a partir do próprio servidor.
-      GOTRUE_SITE_URL: ${PUBLIC_DASHBOARD_URL:-http://localhost:3000}
-      GOTRUE_URI_ALLOW_LIST: "*"
-      GOTRUE_JWT_SECRET: ${JWT_SECRET}
-      GOTRUE_JWT_EXP: 3600
-      GOTRUE_JWT_AUD: authenticated
-      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
-      GOTRUE_DISABLE_SIGNUP: "false"
-      # Sem SMTP configurado, signup ficaria travado esperando confirmação
-      # por email que nunca chega. Autoconfirma em dev/home-lab; troque por
-      # GOTRUE_SMTP_* + remova esta linha se for expor a internet de verdade.
-      GOTRUE_MAILER_AUTOCONFIRM: "true"
-      # Login social — usuários finais dos apps construídos sobre o
-      # NeerCloud podem entrar com GitHub/Google. Deixe em branco (não
-      # defina CLIENT_ID) para desativar um provider; GoTrue simplesmente
-      # não anuncia o provider se as credenciais estiverem vazias.
-      GOTRUE_EXTERNAL_GITHUB_ENABLED: ${GITHUB_OAUTH_CLIENT_ID:+true}
-      GOTRUE_EXTERNAL_GITHUB_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID}
-      GOTRUE_EXTERNAL_GITHUB_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET}
-      GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI: ${PUBLIC_GATEWAY_URL:-http://localhost:8000}/auth/v1/callback
-      GOTRUE_EXTERNAL_GOOGLE_ENABLED: ${GOOGLE_OAUTH_CLIENT_ID:+true}
-      GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}
-      GOTRUE_EXTERNAL_GOOGLE_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET}
-      GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${PUBLIC_GATEWAY_URL:-http://localhost:8000}/auth/v1/callback
-    mem_limit: ${AUTH_MEM_LIMIT:-128m}
-    networks: [neercloud]
-
-  # ── Realtime (WAL → WebSocket) — opcional, perfil "realtime" ────────
-  realtime:
-    image: supabase/realtime:latest
-    container_name: neercloud-realtime
-    profiles: ["realtime"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: neercloud
-      DB_USER: supabase_admin
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_ENC_KEY: ${REALTIME_ENC_KEY}
-      API_JWT_SECRET: ${JWT_SECRET}
-      SECRET_KEY_BASE: ${REALTIME_SECRET_KEY_BASE}
-    mem_limit: ${REALTIME_MEM_LIMIT:-256m}
-    networks: [neercloud]
+    networks: [neer-data-base]
 
   # ── Storage (S3-compatible) — opcional, perfil "storage" ────────────
   minio:
     image: minio/minio:latest
-    container_name: neercloud-minio
+    container_name: neer-data-base-minio
     profiles: ["storage"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
-      - ${DATA_PATH:-./neercloud-data}/minio:/data
+      - ${DATA_PATH:-./neer-data-base-data}/minio:/data
     ports:
       - "${MINIO_API_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
     mem_limit: ${MINIO_MEM_LIMIT:-256m}
-    networks: [neercloud]
+    networks: [neer-data-base]
 
   storage:
     build: ./services/storage
-    container_name: neercloud-storage
+    container_name: neer-data-base-storage
     profiles: ["storage"]
     depends_on:
       postgres:
@@ -177,11 +113,12 @@ services:
       minio:
         condition: service_started
     environment:
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/neercloud
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/neer-data-base
       MINIO_ENDPOINT: minio
       MINIO_PORT: "9000"
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      STUDIO_SESSION_SECRET: ${STUDIO_SESSION_SECRET}
     ports:
       - "${STORAGE_PORT:-3002}:3002"
     healthcheck:
@@ -191,29 +128,92 @@ services:
       retries: 5
       start_period: 10s
     mem_limit: ${STORAGE_MEM_LIMIT:-128m}
-    networks: [neercloud]
+    networks: [neer-data-base]
 
   # ── Edge Functions runtime — opcional, perfil "functions" ───────────
   functions:
     build: ./services/functions
-    container_name: neercloud-functions
-    profiles: ["functions"]
+    container_name: neer-data-base-functions
+    profiles: ["core", "functions"]
+    environment:
+      STUDIO_SESSION_SECRET: ${STUDIO_SESSION_SECRET}
     ports:
       - "${FUNCTIONS_PORT:-8787}:8787"
     mem_limit: ${FUNCTIONS_MEM_LIMIT:-128m}
-    networks: [neercloud]
+    networks: [neer-data-base]
+
+  # ── Message Broker (Kafka) para Billing / Eventos ────────────────────
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: neer-data-base-kafka
+    profiles: ["core"]
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    volumes:
+      - ${DATA_PATH:-./neer-data-base-data}/kafka:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [neer-data-base]
+
+  api:
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile
+    container_name: neer-data-base-api
+    profiles: ["core"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/neer-data-base
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/app
+    command: >
+      sh -c "cd /app/packages/database && npx prisma db push && npm run seed && cd ../../apps/api && npm start"
+    ports:
+      - "3005:3000"
+    networks: [neer-data-base]
+
+  worker:
+    build:
+      context: .
+      dockerfile: ./apps/worker/Dockerfile
+    container_name: neer-data-base-worker
+    profiles: ["core"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/neer-data-base
+    command: >
+      sh -c "cd /app/packages/database && npx prisma db push && cd ../../apps/worker && npm start"
+    networks: [neer-data-base]
 
   # ── GraphQL automático — opcional, perfil "graphql" (serviço pesado) ─
   graphql:
     image: graphile/postgraphile:latest
-    container_name: neercloud-graphql
+    container_name: neer-data-base-graphql
     profiles: ["graphql"]
     depends_on:
       pooler:
         condition: service_started
     command:
       - --connection
-      - postgres://postgres:${POSTGRES_PASSWORD}@pooler:6432/neercloud
+      - postgres://postgres:${POSTGRES_PASSWORD}@pooler:6432/neer-data-base
       - --schema
       - public
       - --port
@@ -230,23 +230,27 @@ services:
     ports:
       - "${GRAPHQL_PORT:-5000}:5000"
     mem_limit: ${GRAPHQL_MEM_LIMIT:-256m}
-    networks: [neercloud]
+    networks: [neer-data-base]
 
-  # ── Cache / reservado para filas e sessões futuras (não usado pelo
-  #    núcleo hoje — só suba se for implementar algo que dependa dele) ──
+  # ── Cache / Fila (Redis) para Workers / Rate Limiting ────────────────
   redis:
-    image: redis:7-alpine
-    container_name: neercloud-redis
-    profiles: ["cache"]
+    image: redis:alpine
+    container_name: neer-data-base-redis
+    profiles: ["core"]
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ${DATA_PATH:-./neer-data-base-data}/redis:/data
     mem_limit: ${REDIS_MEM_LIMIT:-64m}
-    networks: [neercloud]
+    networks: [neer-data-base]
 
   # ── API Gateway (entrada única) ──────────────────────────────────────
   kong:
     image: kong:3.6
-    container_name: neercloud-kong
+    container_name: neer-data-base-kong
     profiles: ["core"]
-    depends_on: [rest, auth]
+    depends_on: [rest, control-plane, dashboard]
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /kong.yml
@@ -258,19 +262,20 @@ services:
       - "${GATEWAY_PORT:-8000}:8000"
       - "${KONG_ADMIN_PORT:-8001}:8001"
     mem_limit: ${KONG_MEM_LIMIT:-256m}
-    networks: [neercloud]
+    networks: [neer-data-base]
 
   # ── Control Plane (orquestração: projetos, orgs, provisioning) ──────
   control-plane:
     build: ./services/control-plane
-    container_name: neercloud-control-plane
+    container_name: neer-data-base-control-plane
     profiles: ["core"]
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/neercloud
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/neer-data-base
       JWT_SECRET: ${JWT_SECRET}
+      STUDIO_SESSION_SECRET: ${STUDIO_SESSION_SECRET}
       KONG_ADMIN_URL: http://kong:8001
       # Usado para montar a webhookUrl mostrada ao conectar um repositório
       # GitHub (services/control-plane/src/routes/github-management.js) —
@@ -286,7 +291,7 @@ services:
       retries: 5
       start_period: 10s
     mem_limit: ${CONTROL_PLANE_MEM_LIMIT:-128m}
-    networks: [neercloud]
+    networks: [neer-data-base]
 
   # ── Dashboard (Studio) ───────────────────────────────────────────────
   # NEXT_PUBLIC_* precisam ser injetadas em BUILD TIME (Next.js embute
@@ -299,20 +304,21 @@ services:
       args:
         NEXT_PUBLIC_CONTROL_PLANE_URL: ${PUBLIC_CONTROL_PLANE_URL:-http://localhost:3001}
         NEXT_PUBLIC_API_GATEWAY_URL: ${PUBLIC_GATEWAY_URL:-http://localhost:8000}
-    container_name: neercloud-dashboard
+    container_name: neer-data-base-dashboard
     profiles: ["core"]
     depends_on:
       control-plane:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/neercloud
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/neer-data-base
+      STUDIO_ADMIN_EMAIL: ${STUDIO_ADMIN_EMAIL}
       STUDIO_ADMIN_PASSWORD: ${STUDIO_ADMIN_PASSWORD}
       STUDIO_SESSION_SECRET: ${STUDIO_SESSION_SECRET}
     ports:
-      - "${DASHBOARD_PORT:-3000}:3000"
+      - "${DASHBOARD_PORT:-3010}:3000"
     mem_limit: ${DASHBOARD_MEM_LIMIT:-256m}
-    networks: [neercloud]
+    networks: [neer-data-base]
 
 networks:
-  neercloud:
+  neer-data-base:
     driver: bridge

@@ -1,0 +1,48 @@
+_format_version: "3.0"
+
+services:
+  - name: rest
+    url: http://rest:3000
+    routes:
+      - name: rest-route
+        paths:
+          - /rest/v1
+        strip_path: true
+
+  - name: control-plane
+    url: http://control-plane:3001
+    routes:
+      - name: control-plane-route
+        paths:
+          - /api/control-plane
+        strip_path: true
+    plugins:
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "X-Neer-Data-Base-Internal: true"
+
+  - name: storage
+    url: http://storage:3002
+    routes:
+      - name: storage-route
+        paths:
+          - /api/storage
+        strip_path: true
+
+  - name: functions
+    url: http://functions:8787
+    routes:
+      - name: functions-route
+        paths:
+          - /api/functions
+        strip_path: true
+
+  - name: dashboard
+    url: http://dashboard:3000
+    routes:
+      - name: dashboard-route
+        paths:
+          - /
+        strip_path: false

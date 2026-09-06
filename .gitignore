@@ -1,11 +1,13 @@
 # Dependências
 node_modules/
+*/node_modules/
+*/*/node_modules/
 .npm-global/
 
 # Dados persistentes (Postgres, MinIO) — bind mount local. Se você mudou
 # DATA_PATH no .env para outro nome de pasta, adicione-a aqui também
 # (gitignore não expande variáveis de ambiente).
-neercloud-data/
+neer-data-base-data/
 
 # Ambiente
 .env
@@ -15,6 +17,9 @@ services/kubernetes/base/secrets.yaml
 .next/
 dist/
 build/
+apps/api/dist/
+apps/worker/dist/
+services/dashboard/.next/
 
 # Migrations locais (estado do neer db push)
 migrations/.applied.json
