@@ -1,7 +1,5 @@
 # Dependências
 node_modules/
-*/node_modules/
-*/*/node_modules/
 .npm-global/
 
 # Dados persistentes (Postgres, MinIO) — bind mount local. Se você mudou
@@ -19,7 +17,6 @@ dist/
 build/
 apps/api/dist/
 apps/worker/dist/
-services/dashboard/.next/
 
 # Migrations locais (estado do neer db push)
 migrations/.applied.json
