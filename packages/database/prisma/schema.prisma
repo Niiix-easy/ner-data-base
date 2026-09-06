@@ -10,6 +10,8 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
+  document  String   @unique // Anti-fraud CPF/CNPJ
+  password  String
   name      String?
   locale    String   @default("en-US")
   timezone  String   @default("UTC")

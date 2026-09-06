@@ -1,5 +1,7 @@
 # Dependências
 node_modules/
+*/node_modules/
+*/*/node_modules/
 .npm-global/
 
 # Dados persistentes (Postgres, MinIO) — bind mount local. Se você mudou
@@ -15,6 +17,9 @@ services/kubernetes/base/secrets.yaml
 .next/
 dist/
 build/
+apps/api/dist/
+apps/worker/dist/
+services/dashboard/.next/
 
 # Migrations locais (estado do neer db push)
 migrations/.applied.json
@@ -26,11 +31,3 @@ types/database.ts
 *.log
 .DS_Store
 Thumbs.db
-fix_docker.sh
-fix.patch
-fix.patch
-fix_docker.sh
-node_modules/
-apps/api/dist/
-services/dashboard/node_modules/
-test_routes.sh

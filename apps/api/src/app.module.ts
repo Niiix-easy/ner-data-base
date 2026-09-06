@@ -7,6 +7,9 @@ import { BillingModule } from './modules/billing/billing.module';
 import { SystemModule } from './modules/system/system.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { UsersModule } from './modules/users/users.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
+import { StorageModule } from './modules/storage/storage.module';
 
 @Module({
   imports: [
@@ -15,7 +18,10 @@ import { UsersModule } from './modules/users/users.module';
     BillingModule,
     SystemModule,
     InvoicesModule,
-    UsersModule
+    UsersModule,
+    AuthModule,
+    CouponsModule,
+    StorageModule
   ],
   controllers: [AdminController, ProjectsController],
   providers: [],
