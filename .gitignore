@@ -32,3 +32,5 @@ fix.patch
 fix_docker.sh
 node_modules/
 apps/api/dist/
+services/dashboard/node_modules/
+test_routes.sh
