@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PlanStatus { ACTIVE ARCHIVED }
+enum SubscriptionStatus { TRIALING ACTIVE PAST_DUE CANCELED }
+enum InvoiceStatus { DRAFT OPEN PAID VOID UNCOLLECTIBLE }
+enum PaymentStatus { PENDING SUCCEEDED FAILED REFUNDED }
+enum PaymentMethod { CARD PIX BANK_TRANSFER MANUAL }
+enum AdminRole { SUPER_ADMIN BILLING_ADMIN SUPPORT_ADMIN VIEWER }
+
+model Customer {
+  id            String @id @default(cuid())
+  externalId    String? @unique
+  name          String
+  email         String @unique
+  taxId         String?
+  currency      String @default("BRL")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  subscriptions Subscription[]
+  invoices      Invoice[]
+  payments      Payment[]
+  usageEvents   UsageEvent[]
+}
+
+model Plan {
+  id          String @id @default(cuid())
+  slug        String @unique
+  name        String
+  description String?
+  status      PlanStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  versions    PlanVersion[]
+  subscriptions Subscription[]
+}
+
+model PlanVersion {
+  id        String @id @default(cuid())
+  planId    String
+  version   Int
+  effectiveAt DateTime
+  createdAt DateTime @default(now())
+  plan      Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  prices    Price[]
+  @@unique([planId, version])
+}
+
+model Price {
+  id           String @id @default(cuid())
+  planVersionId String
+  currency     String
+  amountCents  Int
+  interval     String
+  createdAt    DateTime @default(now())
+  planVersion  PlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id          String @id @default(cuid())
+  customerId  String
+  planId      String
+  status      SubscriptionStatus @default(ACTIVE)
+  quantity    Int @default(1)
+  startedAt   DateTime @default(now())
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  canceledAt DateTime?
+  customer    Customer @relation(fields: [customerId], references: [id])
+  plan        Plan @relation(fields: [planId], references: [id])
+  invoices    Invoice[]
+  usageEvents UsageEvent[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model UsageEvent {
+  id             String @id @default(cuid())
+  customerId     String
+  subscriptionId String?
+  meter         String
+  quantity       Int
+  occurredAt     DateTime @default(now())
+  idempotencyKey String? @unique
+  metadata      Json?
+  customer       Customer @relation(fields: [customerId], references: [id])
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  createdAt      DateTime @default(now())
+  @@index([customerId, meter, occurredAt])
+}
+
+model Invoice {
+  id            String @id @default(cuid())
+  number        String @unique
+  customerId    String
+  subscriptionId String?
+  status        InvoiceStatus @default(DRAFT)
+  currency      String @default("BRL")
+  subtotalCents Int @default(0)
+  discountCents Int @default(0)
+  taxCents      Int @default(0)
+  totalCents    Int @default(0)
+  amountDueCents Int @default(0)
+  issuedAt      DateTime?
+  dueAt         DateTime?
+  paidAt        DateTime?
+  customer      Customer @relation(fields: [customerId], references: [id])
+  subscription  Subscription? @relation(fields: [subscriptionId], references: [id])
+  lines         InvoiceLine[]
+  payments      Payment[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model InvoiceLine {
+  id          String @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Int
+  unitAmountCents Int
+  amountCents Int
+  meter       String?
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id            String @id @default(cuid())
+  customerId    String
+  invoiceId     String?
+  amountCents   Int
+  currency      String @default("BRL")
+  status        PaymentStatus @default(PENDING)
+  method        PaymentMethod
+  provider      String?
+  providerRef   String?
+  paidAt        DateTime?
+  failureReason String?
+  customer      Customer @relation(fields: [customerId], references: [id])
+  invoice       Invoice? @relation(fields: [invoiceId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([customerId, status])
+}
+
+model AdminUser {
+  id           String @id @default(cuid())
+  email        String @unique
+  name         String
+  role         AdminRole
+  active       Boolean @default(true)
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  sessions     AdminSession[]
+  auditLogs    AdminAuditLog[]
+}
+
+model AdminSession {
+  id        String @id @default(cuid())
+  userId    String
+  tokenHash String @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AdminAuditLog {
+  id        String @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  ip        String?
+  userAgent String?
+  requestId String?
+  createdAt DateTime @default(now())
+  actor     AdminUser? @relation(fields: [actorId], references: [id])
+  @@index([entity, entityId, createdAt])
+}

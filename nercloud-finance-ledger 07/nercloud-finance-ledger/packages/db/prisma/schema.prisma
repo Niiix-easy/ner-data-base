@@ -1,0 +1,124 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+
+enum AccountType { ASSET LIABILITY EQUITY REVENUE EXPENSE }
+enum NormalBalance { DEBIT CREDIT }
+enum JournalStatus { DRAFT POSTED VOID }
+enum ReconciliationStatus { UNMATCHED MATCHED REJECTED EXCLUDED }
+enum AuditAction { CREATE UPDATE DELETE POST VOID MATCH RECONCILE IMPORT EXPORT }
+
+model LedgerAccount {
+  id            String @id @default(cuid())
+  code          String @unique
+  name          String
+  type          AccountType
+  normalBalance NormalBalance
+  parentId      String?
+  currency      String @default("BRL")
+  active        Boolean @default(true)
+  description   String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  parent        LedgerAccount? @relation("AccountTree", fields:[parentId], references:[id], onDelete:SetNull)
+  children      LedgerAccount[] @relation("AccountTree")
+  lines         JournalLine[]
+  @@index([type,active])
+  @@index([parentId])
+}
+
+model AccountingPeriod {
+  id        String @id @default(cuid())
+  name      String
+  startAt   DateTime
+  endAt     DateTime
+  closed    Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  journals  JournalEntry[]
+  @@index([startAt,endAt])
+}
+
+model JournalEntry {
+  id          String @id @default(cuid())
+  reference   String @unique
+  description String?
+  status      JournalStatus @default(DRAFT)
+  currency    String @default("BRL")
+  entryDate   DateTime @default(now())
+  periodId    String?
+  sourceType  String?
+  sourceId    String?
+  postedAt    DateTime?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  period      AccountingPeriod? @relation(fields:[periodId],references:[id],onDelete:SetNull)
+  lines       JournalLine[]
+  @@index([entryDate,status])
+  @@index([sourceType,sourceId])
+}
+
+model JournalLine {
+  id          String @id @default(cuid())
+  journalId   String
+  accountId   String
+  description String?
+  debit       Decimal @default(0) @db.Decimal(20,6)
+  credit      Decimal @default(0) @db.Decimal(20,6)
+  currency    String @default("BRL")
+  metadata    Json?
+  journal     JournalEntry @relation(fields:[journalId],references:[id],onDelete:Cascade)
+  account     LedgerAccount @relation(fields:[accountId],references:[id])
+  @@index([journalId])
+  @@index([accountId])
+}
+
+model ReconciliationAccount {
+  id          String @id @default(cuid())
+  key         String @unique
+  name        String
+  provider    String?
+  externalId  String?
+  currency    String @default("BRL")
+  active      Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  transactions ExternalTransaction[]
+}
+
+model ExternalTransaction {
+  id             String @id @default(cuid())
+  accountId      String
+  externalId     String
+  occurredAt     DateTime
+  description    String?
+  amount         Decimal @db.Decimal(20,6)
+  currency       String @default("BRL")
+  status         ReconciliationStatus @default(UNMATCHED)
+  matchedJournalId String?
+  rawData        Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  account        ReconciliationAccount @relation(fields:[accountId],references:[id],onDelete:Cascade)
+  @@unique([accountId,externalId])
+  @@index([status,occurredAt])
+}
+
+model AuditLog {
+  id          String @id @default(cuid())
+  actorId     String?
+  actorType   String?
+  action      AuditAction
+  entityType  String
+  entityId    String
+  before      Json?
+  after       Json?
+  requestId   String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  @@index([entityType,entityId,createdAt])
+  @@index([actorId,createdAt])
+  @@index([action,createdAt])
+}

@@ -1,0 +1,67 @@
+{
+  "common": {
+    "appName": "NERCloud",
+    "dashboard": "Dashboard",
+    "billing": "Billing",
+    "usage": "Usage",
+    "invoices": "Invoices",
+    "payments": "Payments",
+    "plans": "Plans",
+    "admin": "Administration",
+    "customers": "Customers",
+    "save": "Save",
+    "cancel": "Cancel",
+    "search": "Search",
+    "status": "Status",
+    "actions": "Actions",
+    "loading": "Loading",
+    "noResults": "No results found"
+  },
+  "billing": {
+    "title": "Billing dashboard",
+    "open": "Open balance",
+    "paid": "Paid",
+    "pending": "Pending payments",
+    "activeSubscriptions": "Active subscriptions",
+    "revenue": "Revenue",
+    "balance": "Balance"
+  },
+  "usage": {
+    "title": "Usage dashboard",
+    "meter": "Meter",
+    "events": "Events",
+    "quantity": "Quantity",
+    "period": "Period"
+  },
+  "invoices": {
+    "title": "Invoice management",
+    "number": "Number",
+    "customer": "Customer",
+    "total": "Total",
+    "dueDate": "Due date",
+    "issuedAt": "Issued at"
+  },
+  "payments": {
+    "title": "Payment management",
+    "amount": "Amount",
+    "method": "Method",
+    "provider": "Provider",
+    "reference": "Reference"
+  },
+  "plans": {
+    "title": "Plan management",
+    "name": "Name",
+    "description": "Description",
+    "price": "Price",
+    "interval": "Interval",
+    "version": "Version"
+  },
+  "admin": {
+    "title": "Administration",
+    "users": "Users",
+    "role": "Role",
+    "active": "Active",
+    "audit": "Audit",
+    "permissions": "Permissions"
+  }
+}

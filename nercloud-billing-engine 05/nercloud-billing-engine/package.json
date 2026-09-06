@@ -1,0 +1,2 @@
+{"name":"nercloud-billing-engine","private":true,"packageManager":"pnpm@10.15.0",
+"scripts":{"dev":"pnpm --filter @neercloud/dashboard dev","db:generate":"pnpm --filter @neercloud/db prisma:generate","db:push":"pnpm --filter @neercloud/db prisma:push","db:seed":"pnpm --filter @neercloud/db prisma:seed"}}

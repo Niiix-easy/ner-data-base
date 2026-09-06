@@ -1,0 +1,259 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  passwordHash String
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  memberships  Membership[]
+  apiKeys      ApiKey[]
+  usageEvents  UsageEvent[]
+  usageAdjustments UsageAdjustment[]
+}
+
+model Organization {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  memberships Membership[]
+  apiKeys      ApiKey[]
+  usageEvents  UsageEvent[]
+  usageAdjustments UsageAdjustment[]
+  meters       Meter[]
+  usageLimits  UsageLimit[]
+  usageAggregations UsageAggregation[]
+  usageOverages UsageOverage[]
+}
+
+model Membership {
+  id             String           @id @default(cuid())
+  userId         String
+  organizationId String
+  roleId         String
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           Role             @relation(fields: [roleId], references: [id])
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model Role {
+  id             String       @id @default(cuid())
+  name           String
+  description    String?
+  system         Boolean      @default(false)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships    Membership[]
+  permissions    RolePermission[]
+  @@unique([organizationId, name])
+}
+
+model Permission {
+  id          String       @id @default(cuid())
+  key         String       @unique
+  description String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([roleId, permissionId])
+}
+
+model ApiKey {
+  id             String       @id @default(cuid())
+  name           String
+  prefix         String       @unique
+  secretHash     String
+  userId         String
+  organizationId String
+  status         ApiKeyStatus @default(ACTIVE)
+  lastUsedAt     DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+  revokedAt      DateTime?
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String?
+  userId         String?
+  action         String
+  resource       String
+  resourceId     String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  @@index([organizationId, createdAt])
+}
+
+
+enum MeterAggregation {
+  SUM
+  COUNT
+  MAX
+  LAST
+}
+
+enum UsageEventStatus {
+  ACCEPTED
+  REJECTED
+}
+
+enum LimitMode {
+  SOFT
+  HARD
+}
+
+enum OverageStatus {
+  OPEN
+  INVOICED
+  VOID
+}
+
+model Meter {
+  id             String           @id @default(cuid())
+  organizationId String
+  key            String
+  name           String
+  description    String?
+  unit           String
+  aggregation   MeterAggregation @default(SUM)
+  active         Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events         UsageEvent[]
+  adjustments    UsageAdjustment[]
+  limits         UsageLimit[]
+  aggregations   UsageAggregation[]
+  overages       UsageOverage[]
+  @@unique([organizationId, key])
+  @@index([organizationId, active])
+}
+
+model UsageEvent {
+  id             String            @id @default(cuid())
+  organizationId String
+  meterId        String
+  userId         String?
+  externalId     String?
+  idempotencyKey String
+  value          Float
+  occurredAt     DateTime          @default(now())
+  metadata       Json?
+  status         UsageEventStatus @default(ACCEPTED)
+  createdAt      DateTime          @default(now())
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  meter          Meter             @relation(fields: [meterId], references: [id], onDelete: Cascade)
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, meterId, occurredAt])
+  @@index([organizationId, occurredAt])
+  @@index([externalId])
+}
+
+model UsageAdjustment {
+  id             String       @id @default(cuid())
+  organizationId String
+  meterId        String
+  userId         String?
+  value          Float
+  reason         String
+  effectiveAt    DateTime     @default(now())
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  meter          Meter        @relation(fields: [meterId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@index([organizationId, meterId, effectiveAt])
+}
+
+model UsageLimit {
+  id                String       @id @default(cuid())
+  organizationId    String
+  meterId           String
+  periodStart       DateTime
+  periodEnd         DateTime
+  includedUnits     Float        @default(0)
+  hardLimitUnits    Float?
+  overageUnitPrice   Float        @default(0)
+  mode              LimitMode    @default(SOFT)
+  active            Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  meter             Meter        @relation(fields: [meterId], references: [id], onDelete: Cascade)
+  @@index([organizationId, meterId, periodStart, periodEnd])
+}
+
+model UsageAggregation {
+  id             String       @id @default(cuid())
+  organizationId String
+  meterId        String
+  periodStart    DateTime
+  periodEnd      DateTime
+  value          Float        @default(0)
+  eventCount     Int          @default(0)
+  adjustmentValue Float       @default(0)
+  calculatedAt   DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  meter          Meter        @relation(fields: [meterId], references: [id], onDelete: Cascade)
+  @@unique([organizationId, meterId, periodStart, periodEnd])
+  @@index([organizationId, periodStart, periodEnd])
+}
+
+model UsageOverage {
+  id             String        @id @default(cuid())
+  organizationId String
+  meterId        String
+  limitId        String?
+  periodStart    DateTime
+  periodEnd      DateTime
+  usageValue     Float
+  includedUnits  Float
+  overageUnits   Float
+  unitPrice      Float
+  amount         Float
+  status         OverageStatus @default(OPEN)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  meter          Meter         @relation(fields: [meterId], references: [id], onDelete: Cascade)
+  @@unique([organizationId, meterId, periodStart, periodEnd])
+  @@index([organizationId, status])
+}

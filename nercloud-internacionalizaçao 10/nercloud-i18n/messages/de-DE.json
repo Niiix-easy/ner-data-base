@@ -1,0 +1,67 @@
+{
+  "common": {
+    "appName": "NERCloud",
+    "dashboard": "Dashboard",
+    "billing": "Abrechnung",
+    "usage": "Nutzung",
+    "invoices": "Rechnungen",
+    "payments": "Zahlungen",
+    "plans": "Tarife",
+    "admin": "Administration",
+    "customers": "Kunden",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "search": "Suchen",
+    "status": "Status",
+    "actions": "Aktionen",
+    "loading": "Laden",
+    "noResults": "Keine Ergebnisse gefunden"
+  },
+  "billing": {
+    "title": "Abrechnungs-Dashboard",
+    "open": "Offener Betrag",
+    "paid": "Bezahlt",
+    "pending": "Ausstehende Zahlungen",
+    "activeSubscriptions": "Aktive Abonnements",
+    "revenue": "Umsatz",
+    "balance": "Saldo"
+  },
+  "usage": {
+    "title": "Nutzungs-Dashboard",
+    "meter": "Messgerät",
+    "events": "Ereignisse",
+    "quantity": "Menge",
+    "period": "Zeitraum"
+  },
+  "invoices": {
+    "title": "Rechnungsverwaltung",
+    "number": "Nummer",
+    "customer": "Kunde",
+    "total": "Gesamt",
+    "dueDate": "Fälligkeitsdatum",
+    "issuedAt": "Ausgestellt am"
+  },
+  "payments": {
+    "title": "Zahlungsverwaltung",
+    "amount": "Betrag",
+    "method": "Methode",
+    "provider": "Anbieter",
+    "reference": "Referenz"
+  },
+  "plans": {
+    "title": "Tarifverwaltung",
+    "name": "Name",
+    "description": "Beschreibung",
+    "price": "Preis",
+    "interval": "Intervall",
+    "version": "Version"
+  },
+  "admin": {
+    "title": "Administration",
+    "users": "Benutzer",
+    "role": "Rolle",
+    "active": "Aktiv",
+    "audit": "Audit",
+    "permissions": "Berechtigungen"
+  }
+}

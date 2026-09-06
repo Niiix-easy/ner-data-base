@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: neercloud-postgres-commerce
+    environment:
+      POSTGRES_DB: nercloud
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - commerce_pg:/var/lib/postgresql/data
+  dashboard:
+    build: .
+    container_name: neercloud-commerce-admin
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/nercloud
+      ADMIN_SESSION_SECRET: change-me
+    depends_on:
+      - postgres
+    ports:
+      - "3013:3013"
+volumes:
+  commerce_pg:

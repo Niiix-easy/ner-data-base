@@ -1,0 +1,172 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+
+enum SubscriptionStatus { TRIALING ACTIVE PAUSED PAST_DUE CANCELED EXPIRED }
+enum CycleStatus { OPEN CLOSED VOID }
+enum InvoiceStatus { DRAFT OPEN PAID VOID UNCOLLECTIBLE }
+enum InvoiceLineType { PLAN PRICE METER PRORATION CREDIT TAX DISCOUNT }
+enum CreditType { CREDIT_BALANCE REFUND ADJUSTMENT }
+enum CouponType { PERCENT FIXED }
+enum TaxType { PERCENT FIXED }
+enum SubscriptionChangeType { NEW_PLAN UPGRADE DOWNGRADE CANCEL PAUSE RESUME }
+enum RatingAggregation { SUM MAX LAST COUNT }
+
+model Subscription {
+  id              String       @id @default(cuid())
+  customerId      String
+  planVersionId   String
+  priceId         String?
+  status          SubscriptionStatus @default(ACTIVE)
+  quantity        Int          @default(1)
+  currency        String       @default("BRL")
+  startedAt       DateTime     @default(now())
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd Boolean    @default(false)
+  canceledAt      DateTime?
+  trialEnd        DateTime?
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  billingCycles   BillingCycle[]
+  invoices        Invoice[]
+  planVersion     PlanVersion @relation(fields:[planVersionId], references:[id])
+  price           Price?       @relation(fields:[priceId], references:[id], onDelete:SetNull)
+  changes         SubscriptionChange[]
+  @@index([customerId])
+  @@index([status])
+}
+
+model SubscriptionChange {
+  id             String @id @default(cuid())
+  subscriptionId String
+  type           SubscriptionChangeType
+  fromPlanVersionId String?
+  toPlanVersionId String?
+  effectiveAt    DateTime
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  subscription   Subscription @relation(fields:[subscriptionId], references:[id], onDelete:Cascade)
+  @@index([subscriptionId,effectiveAt])
+}
+
+model BillingCycle {
+  id             String @id @default(cuid())
+  subscriptionId String
+  number         Int
+  startAt        DateTime
+  endAt          DateTime
+  status         CycleStatus @default(OPEN)
+  ratedAt        DateTime?
+  invoicedAt     DateTime?
+  createdAt      DateTime @default(now())
+  subscription   Subscription @relation(fields:[subscriptionId], references:[id], onDelete:Cascade)
+  invoice        Invoice?
+  @@unique([subscriptionId,number])
+  @@index([subscriptionId,startAt])
+}
+
+model RatingEvent {
+  id          String @id @default(cuid())
+  customerId  String
+  subscriptionId String?
+  meterKey    String
+  quantity    Decimal @db.Decimal(20,6)
+  occurredAt  DateTime @default(now())
+  idempotencyKey String? @unique
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  @@index([customerId,meterKey,occurredAt])
+}
+
+model Invoice {
+  id             String @id @default(cuid())
+  customerId     String
+  subscriptionId String?
+  billingCycleId String? @unique
+  number         String @unique
+  status         InvoiceStatus @default(DRAFT)
+  currency       String @default("BRL")
+  subtotal       Int @default(0)
+  discountTotal  Int @default(0)
+  creditTotal    Int @default(0)
+  taxTotal       Int @default(0)
+  total          Int @default(0)
+  amountPaid     Int @default(0)
+  amountDue      Int @default(0)
+  issuedAt       DateTime?
+  dueAt          DateTime?
+  paidAt         DateTime?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  subscription   Subscription? @relation(fields:[subscriptionId], references:[id], onDelete:SetNull)
+  billingCycle   BillingCycle? @relation(fields:[billingCycleId], references:[id], onDelete:SetNull)
+  lines          InvoiceLine[]
+  credits       Credit[]
+  @@index([customerId])
+  @@index([status])
+}
+
+model InvoiceLine {
+  id          String @id @default(cuid())
+  invoiceId   String
+  type        InvoiceLineType
+  description String
+  quantity    Decimal @default(1) @db.Decimal(20,6)
+  unitAmount  Int
+  amount      Int
+  metadata    Json?
+  invoice     Invoice @relation(fields:[invoiceId], references:[id], onDelete:Cascade)
+  @@index([invoiceId])
+}
+
+model Credit {
+  id          String @id @default(cuid())
+  customerId  String
+  invoiceId   String?
+  type        CreditType @default(CREDIT_BALANCE)
+  amount      Int
+  remaining   Int
+  currency    String @default("BRL")
+  reason      String?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  invoice     Invoice? @relation(fields:[invoiceId], references:[id], onDelete:SetNull)
+  @@index([customerId,remaining])
+}
+
+model Coupon {
+  id             String @id @default(cuid())
+  code           String @unique
+  type           CouponType
+  value          Int
+  currency       String?
+  maxRedemptions Int?
+  redemptions    Int @default(0)
+  validFrom      DateTime @default(now())
+  validUntil     DateTime?
+  active         Boolean @default(true)
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  @@index([code,active])
+}
+
+model Tax {
+  id          String @id @default(cuid())
+  key         String @unique
+  name        String
+  type        TaxType
+  rate        Decimal @db.Decimal(10,6)
+  inclusive   Boolean @default(false)
+  country     String?
+  region      String?
+  active      Boolean @default(true)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([active])
+}

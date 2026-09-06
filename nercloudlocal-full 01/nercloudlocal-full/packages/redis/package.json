@@ -1,0 +1,10 @@
+{
+  "name": "@neercloud/redis",
+  "private": true,
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "ioredis": "^5.4.0"
+  }
+}

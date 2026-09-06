@@ -1,0 +1,67 @@
+{
+  "common": {
+    "appName": "NERCloud",
+    "dashboard": "仪表盘",
+    "billing": "账单",
+    "usage": "用量",
+    "invoices": "发票",
+    "payments": "付款",
+    "plans": "套餐",
+    "admin": "管理",
+    "customers": "客户",
+    "save": "保存",
+    "cancel": "取消",
+    "search": "搜索",
+    "status": "状态",
+    "actions": "操作",
+    "loading": "加载中",
+    "noResults": "未找到结果"
+  },
+  "billing": {
+    "title": "账单仪表盘",
+    "open": "未结余额",
+    "paid": "已付款",
+    "pending": "待处理付款",
+    "activeSubscriptions": "有效订阅",
+    "revenue": "收入",
+    "balance": "余额"
+  },
+  "usage": {
+    "title": "用量仪表盘",
+    "meter": "计量器",
+    "events": "事件",
+    "quantity": "数量",
+    "period": "期间"
+  },
+  "invoices": {
+    "title": "发票管理",
+    "number": "编号",
+    "customer": "客户",
+    "total": "总计",
+    "dueDate": "到期日",
+    "issuedAt": "开票日期"
+  },
+  "payments": {
+    "title": "付款管理",
+    "amount": "金额",
+    "method": "方式",
+    "provider": "支付服务商",
+    "reference": "参考号"
+  },
+  "plans": {
+    "title": "套餐管理",
+    "name": "名称",
+    "description": "描述",
+    "price": "价格",
+    "interval": "周期",
+    "version": "版本"
+  },
+  "admin": {
+    "title": "管理",
+    "users": "用户",
+    "role": "角色",
+    "active": "启用",
+    "audit": "审计",
+    "permissions": "权限"
+  }
+}

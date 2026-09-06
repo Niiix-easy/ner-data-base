@@ -1,0 +1,115 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+
+enum ProductStatus { ACTIVE ARCHIVED }
+enum PlanStatus { ACTIVE ARCHIVED }
+enum VersionStatus { DRAFT ACTIVE RETIRED }
+enum PriceType { ONE_TIME RECURRING METERED }
+enum BillingInterval { DAY WEEK MONTH YEAR }
+enum MeterAggregation { SUM MAX LAST COUNT }
+
+model Product {
+  id String @id @default(cuid())
+  key String @unique
+  name String
+  description String?
+  status ProductStatus @default(ACTIVE)
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  plans Plan[]
+  @@index([status])
+}
+
+model Plan {
+  id String @id @default(cuid())
+  productId String
+  key String
+  name String
+  description String?
+  status PlanStatus @default(ACTIVE)
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  versions PlanVersion[]
+  @@unique([productId, key])
+  @@index([productId])
+}
+
+model PlanVersion {
+  id String @id @default(cuid())
+  planId String
+  version Int
+  status VersionStatus @default(DRAFT)
+  effectiveAt DateTime?
+  retiredAt DateTime?
+  description String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  prices Price[]
+  entitlements Entitlement[]
+  @@unique([planId, version])
+  @@index([planId, status])
+}
+
+model Price {
+  id String @id @default(cuid())
+  planVersionId String
+  key String
+  name String
+  type PriceType
+  currency String @default("BRL")
+  unitAmount Int
+  interval BillingInterval?
+  intervalCount Int @default(1)
+  trialDays Int @default(0)
+  meterId String?
+  active Boolean @default(true)
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  planVersion PlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
+  meter Meter? @relation(fields: [meterId], references: [id], onDelete: SetNull)
+  @@unique([planVersionId, key])
+  @@index([planVersionId])
+  @@index([meterId])
+}
+
+model Meter {
+  id String @id @default(cuid())
+  key String @unique
+  name String
+  description String?
+  unit String
+  aggregation MeterAggregation @default(SUM)
+  active Boolean @default(true)
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  prices Price[]
+  entitlements Entitlement[]
+  @@index([active])
+}
+
+model Entitlement {
+  id String @id @default(cuid())
+  planVersionId String
+  meterId String?
+  key String
+  name String
+  description String?
+  includedAmount Decimal? @db.Decimal(20,6)
+  unlimited Boolean @default(false)
+  active Boolean @default(true)
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  planVersion PlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
+  meter Meter? @relation(fields: [meterId], references: [id], onDelete: SetNull)
+  @@unique([planVersionId, key])
+  @@index([planVersionId])
+  @@index([meterId])
+}

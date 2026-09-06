@@ -1,0 +1,67 @@
+{
+  "common": {
+    "appName": "NERCloud",
+    "dashboard": "ダッシュボード",
+    "billing": "請求",
+    "usage": "使用状況",
+    "invoices": "請求書",
+    "payments": "支払い",
+    "plans": "プラン",
+    "admin": "管理",
+    "customers": "顧客",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "search": "検索",
+    "status": "ステータス",
+    "actions": "操作",
+    "loading": "読み込み中",
+    "noResults": "結果がありません"
+  },
+  "billing": {
+    "title": "請求ダッシュボード",
+    "open": "未払い残高",
+    "paid": "支払済み",
+    "pending": "保留中の支払い",
+    "activeSubscriptions": "有効なサブスクリプション",
+    "revenue": "売上",
+    "balance": "残高"
+  },
+  "usage": {
+    "title": "使用状況ダッシュボード",
+    "meter": "メーター",
+    "events": "イベント",
+    "quantity": "数量",
+    "period": "期間"
+  },
+  "invoices": {
+    "title": "請求書管理",
+    "number": "番号",
+    "customer": "顧客",
+    "total": "合計",
+    "dueDate": "支払期限",
+    "issuedAt": "発行日"
+  },
+  "payments": {
+    "title": "支払い管理",
+    "amount": "金額",
+    "method": "方法",
+    "provider": "プロバイダー",
+    "reference": "参照"
+  },
+  "plans": {
+    "title": "プラン管理",
+    "name": "名前",
+    "description": "説明",
+    "price": "価格",
+    "interval": "間隔",
+    "version": "バージョン"
+  },
+  "admin": {
+    "title": "管理",
+    "users": "ユーザー",
+    "role": "役割",
+    "active": "有効",
+    "audit": "監査",
+    "permissions": "権限"
+  }
+}

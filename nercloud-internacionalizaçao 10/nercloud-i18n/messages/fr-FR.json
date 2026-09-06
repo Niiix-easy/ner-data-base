@@ -1,0 +1,67 @@
+{
+  "common": {
+    "appName": "NERCloud",
+    "dashboard": "Tableau de bord",
+    "billing": "Facturation",
+    "usage": "Utilisation",
+    "invoices": "Factures",
+    "payments": "Paiements",
+    "plans": "Forfaits",
+    "admin": "Administration",
+    "customers": "Clients",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "search": "Rechercher",
+    "status": "Statut",
+    "actions": "Actions",
+    "loading": "Chargement",
+    "noResults": "Aucun résultat trouvé"
+  },
+  "billing": {
+    "title": "Tableau de bord de facturation",
+    "open": "Solde ouvert",
+    "paid": "Payé",
+    "pending": "Paiements en attente",
+    "activeSubscriptions": "Abonnements actifs",
+    "revenue": "Revenus",
+    "balance": "Solde"
+  },
+  "usage": {
+    "title": "Tableau de bord d'utilisation",
+    "meter": "Compteur",
+    "events": "Événements",
+    "quantity": "Quantité",
+    "period": "Période"
+  },
+  "invoices": {
+    "title": "Gestion des factures",
+    "number": "Numéro",
+    "customer": "Client",
+    "total": "Total",
+    "dueDate": "Échéance",
+    "issuedAt": "Émise le"
+  },
+  "payments": {
+    "title": "Gestion des paiements",
+    "amount": "Montant",
+    "method": "Méthode",
+    "provider": "Fournisseur",
+    "reference": "Référence"
+  },
+  "plans": {
+    "title": "Gestion des forfaits",
+    "name": "Nom",
+    "description": "Description",
+    "price": "Prix",
+    "interval": "Intervalle",
+    "version": "Version"
+  },
+  "admin": {
+    "title": "Administration",
+    "users": "Utilisateurs",
+    "role": "Rôle",
+    "active": "Actif",
+    "audit": "Audit",
+    "permissions": "Autorisations"
+  }
+}

@@ -1,0 +1,191 @@
+// Merge these models/enums into the existing prisma/schema.prisma.
+// They intentionally use organizationId on every tenant-owned payment resource.
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum AttemptStatus {
+  CREATED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum PaymentMethodType {
+  CARD
+  PIX
+  BOLETO
+  BANK_TRANSFER
+  WALLET
+  OTHER
+}
+
+enum PaymentMethodStatus {
+  ACTIVE
+  INACTIVE
+  REVOKED
+}
+
+enum ProviderStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  WON
+  LOST
+  CLOSED
+}
+
+model PaymentProviderConfig {
+  id             String         @id @default(cuid())
+  organizationId String
+  code           String
+  displayName    String
+  status         ProviderStatus @default(ACTIVE)
+  credentialsRef String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+}
+
+model PaymentMethod {
+  id                   String              @id @default(cuid())
+  organizationId       String
+  userId               String
+  type                 PaymentMethodType
+  providerCode         String
+  providerMethodId     String
+  brand                String?
+  last4                String?
+  expMonth             Int?
+  expYear              Int?
+  status               PaymentMethodStatus @default(ACTIVE)
+  billingName          String?
+  billingEmail         String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  payments             Payment[]
+  @@unique([organizationId, providerCode, providerMethodId])
+  @@index([organizationId, userId])
+}
+
+model Payment {
+  id                   String        @id @default(cuid())
+  organizationId       String
+  userId               String?
+  amount               Int
+  currency             String
+  description          String?
+  customerReference    String?
+  status               PaymentStatus @default(PENDING)
+  providerCode         String
+  providerPaymentId   String?
+  paymentMethodId      String
+  idempotencyKey       String
+  metadata             Json?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  paymentMethod         PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+  attempts              PaymentAttempt[]
+  refunds               Refund[]
+  disputes              Dispute[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@unique([providerCode, providerPaymentId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+}
+
+model PaymentAttempt {
+  id                  String        @id @default(cuid())
+  organizationId      String
+  paymentId           String
+  attemptNumber       Int
+  status              AttemptStatus @default(CREATED)
+  providerCode        String
+  providerAttemptId   String?
+  errorCode           String?
+  errorMessage        String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  payment             Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentId, attemptNumber])
+  @@index([organizationId, createdAt])
+}
+
+model PaymentWebhookEvent {
+  id                  String   @id @default(cuid())
+  organizationId      String?
+  providerCode        String
+  eventId             String
+  type                String
+  signatureVerified   Boolean
+  payload             Json
+  processedAt         DateTime?
+  createdAt            DateTime @default(now())
+
+  @@unique([providerCode, eventId])
+  @@index([organizationId, createdAt])
+}
+
+model Refund {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  paymentId           String
+  amount              Int
+  currency             String
+  reason              String?
+  status              RefundStatus @default(PENDING)
+  providerRefundId    String?
+  idempotencyKey      String
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  payment             Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, paymentId])
+}
+
+model Dispute {
+  id                  String         @id @default(cuid())
+  organizationId      String
+  paymentId           String
+  providerDisputeId   String
+  amount              Int
+  currency             String
+  reason              String?
+  status              DisputeStatus  @default(OPEN)
+  evidenceDueAt       DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  payment             Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@unique([providerDisputeId])
+  @@index([organizationId, status])
+}

@@ -1,0 +1,2 @@
+import {db} from "@neercloud/db"; import {NextRequest} from "next/server";
+export async function GET(req:NextRequest){const u=new URL(req.url),accountId=u.searchParams.get("accountId"),from=u.searchParams.get("from"),to=u.searchParams.get("to");const data=await db.journalLine.findMany({where:{accountId:accountId||undefined,journal:{status:"POSTED",entryDate:{gte:from?new Date(from):undefined,lte:to?new Date(to):undefined}}},include:{account:true,journal:true},orderBy:{journal:{entryDate:"asc"}}});return Response.json({data})}

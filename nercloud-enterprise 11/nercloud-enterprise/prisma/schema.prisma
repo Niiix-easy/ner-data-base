@@ -1,0 +1,156 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+
+enum ContractStatus { DRAFT ACTIVE EXPIRED CANCELED }
+enum SSOProtocol { OIDC SAML }
+enum SSOStatus { DISABLED ACTIVE ERROR }
+enum SLAStatus { DRAFT ACTIVE EXPIRED }
+enum PricingType { FIXED DISCOUNT TIERED COMMITMENT }
+enum InfrastructureStatus { PROVISIONING ACTIVE DEGRADED DECOMMISSIONING }
+
+model Organization {
+ id String @id @default(cuid())
+ name String
+ slug String @unique
+ externalId String? @unique
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ contracts EnterpriseContract[]
+ ssoConnections SSOConnection[]
+ scimConnections SCIMConnection[]
+ slas SLA[]
+ pricings CustomPricing[]
+ infrastructures DedicatedInfrastructure[]
+}
+
+model EnterpriseContract {
+ id String @id @default(cuid())
+ organizationId String
+ name String
+ status ContractStatus @default(DRAFT)
+ startsAt DateTime
+ endsAt DateTime?
+ autoRenew Boolean @default(false)
+ currency String @default("BRL")
+ notes String?
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+}
+
+model SSOConnection {
+ id String @id @default(cuid())
+ organizationId String
+ name String
+ protocol SSOProtocol
+ status SSOStatus @default(DISABLED)
+ issuer String?
+ clientId String?
+ authorizationUrl String?
+ tokenUrl String?
+ jwksUrl String?
+ metadataUrl String?
+ entityId String?
+ ssoUrl String?
+ certificatePem String?
+ domains String[]
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([organizationId,status])
+}
+
+model SCIMConnection {
+ id String @id @default(cuid())
+ organizationId String
+ name String
+ baseUrl String
+ tokenHash String
+ active Boolean @default(true)
+ lastSyncAt DateTime?
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([organizationId,active])
+}
+
+model SLA {
+ id String @id @default(cuid())
+ organizationId String
+ name String
+ status SLAStatus @default(DRAFT)
+ uptimeTargetBps Int
+ responseTargetMinutes Int
+ resolutionTargetMinutes Int
+ serviceCreditsJson Json?
+ startsAt DateTime
+ endsAt DateTime?
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+}
+
+model CustomPricing {
+ id String @id @default(cuid())
+ organizationId String
+ contractId String?
+ productCode String
+ pricingType PricingType
+ currency String @default("BRL")
+ unitAmountCents Int?
+ minimumCommitmentCents Int?
+ discountBps Int?
+ tiers Json?
+ effectiveAt DateTime
+ expiresAt DateTime?
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([organizationId,productCode,effectiveAt])
+}
+
+model DedicatedInfrastructure {
+ id String @id @default(cuid())
+ organizationId String
+ name String
+ region String
+ environment String
+ status InfrastructureStatus @default(PROVISIONING)
+ provider String
+ clusterRef String?
+ networkRef String?
+ capacity Json?
+ isolationLevel String @default("dedicated")
+ provisionedAt DateTime?
+ decommissionAt DateTime?
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([organizationId,status])
+}
+
+model SCIMUser {
+ id String @id @default(cuid())
+ organizationId String
+ externalId String
+ userName String
+ displayName String?
+ active Boolean @default(true)
+ attributes Json?
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@unique([organizationId,externalId])
+}
+
+model SCIMGroup {
+ id String @id @default(cuid())
+ organizationId String
+ externalId String
+ displayName String
+ members Json?
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@unique([organizationId,externalId])
+}

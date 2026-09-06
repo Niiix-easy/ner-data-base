@@ -1,0 +1,26 @@
+{
+  "name":"@neercloud/event-platform",
+  "private":true,
+  "scripts":{
+    "dev":"concurrently \"npm:dev:publisher\" \"npm:dev:worker\" \"npm:dev:api\"",
+    "dev:publisher":"tsx services/outbox-publisher/src/index.ts",
+    "dev:worker":"tsx services/worker/src/index.ts",
+    "dev:api":"tsx services/api-example/src/index.ts",
+    "prisma:generate":"prisma generate",
+    "prisma:migrate":"prisma migrate dev"
+  },
+  "dependencies":{
+    "@prisma/client":"^6.0.0",
+    "express":"^5.0.0",
+    "kafkajs":"^2.2.4",
+    "zod":"^3.23.0"
+  },
+  "devDependencies":{
+    "@types/express":"^5.0.0",
+    "@types/node":"^22.0.0",
+    "concurrently":"^9.0.0",
+    "prisma":"^6.0.0",
+    "tsx":"^4.19.0",
+    "typescript":"^5.7.0"
+  }
+}

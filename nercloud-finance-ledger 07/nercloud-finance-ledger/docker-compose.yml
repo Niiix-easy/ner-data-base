@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: neercloud-postgres-finance
+    environment:
+      POSTGRES_DB: neercloud
+      POSTGRES_USER: neercloud
+      POSTGRES_PASSWORD: neercloud
+    ports: ["5432:5432"]
+    volumes: [neercloud_finance_postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U neercloud -d neercloud"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    container_name: neercloud-finance-dashboard
+    ports: ["3012:3000"]
+    environment:
+      DATABASE_URL: postgresql://neercloud:neercloud@postgres:5432/neercloud
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  neercloud_finance_postgres:

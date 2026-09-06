@@ -1,0 +1,2 @@
+import {db} from "@neercloud/db"; import {NextRequest} from "next/server";
+export async function GET(req:NextRequest){const u=new URL(req.url),entityType=u.searchParams.get("entityType"),entityId=u.searchParams.get("entityId"),action=u.searchParams.get("action");const data=await db.auditLog.findMany({where:{entityType:entityType||undefined,entityId:entityId||undefined,action:action as any||undefined},orderBy:{createdAt:"desc"},take:500});return Response.json({data})}
