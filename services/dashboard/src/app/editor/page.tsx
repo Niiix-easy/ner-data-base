@@ -1,9 +1,18 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
-export default function TableEditor() {
+export default function TableEditorWrapper() {
+  return (
+    <Suspense fallback={<div className="text-white">Loading...</div>}>
+      <TableEditor />
+    </Suspense>
+  );
+}
+
+function TableEditor() {
   const [tables, setTables] = useState<{table_schema: string, table_name: string}[]>([]);
   const [selectedTable, setSelectedTable] = useState<{schema: string, name: string} | null>(null);
   const [tableData, setTableData] = useState<{rows: any[], columns: string[]}>({ rows: [], columns: [] });
@@ -15,9 +24,16 @@ export default function TableEditor() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [selectedRowKey, setSelectedRowKey] = useState<Record<string, any> | null>(null);
 
+  const searchParams = useSearchParams();
+  const tableName = searchParams.get('table');
+  const schemaName = searchParams.get('schema');
+
   useEffect(() => {
     fetchTables();
-  }, []);
+    if (tableName && schemaName) {
+      loadTableData(schemaName, tableName);
+    }
+  }, [tableName, schemaName]);
 
   const fetchTables = async () => {
     try {

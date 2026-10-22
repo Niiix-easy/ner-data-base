@@ -3,10 +3,8 @@ const nextConfig = {
   output: "standalone",
   async rewrites() {
     return [
-      {
-        source: '/api/control-plane/:path*',
-        destination: 'http://control-plane:3001/:path*', // Proxy to Backend container
-      },
+      // Removed proxy to Backend container, now handled by API Route Proxy
+
       {
         source: '/api/storage/:path*',
         destination: 'http://storage:3002/:path*', // Proxy to Storage container

@@ -52,7 +52,7 @@ export default function DatabasePage() {
               <div key={i} className="bg-gray-800 border border-gray-700 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow">
                 <h3 className="text-xl font-semibold mb-2">{t.table_name}</h3>
                 <p className="text-sm text-gray-400 mb-4">Schema: {t.table_schema}</p>
-                <Link href={`/editor`} className="text-green-400 hover:text-green-300 font-medium">
+                <Link href={`/editor?table=${t.table_name}&schema=${t.table_schema}`} className="text-green-400 hover:text-green-300 font-medium">
                   View Data &rarr;
                 </Link>
               </div>
