@@ -55,14 +55,14 @@ const Sidebar = () => {
 
   return (
     <aside className="w-64 bg-[#1c1c1c] text-[#a0a0a0] flex flex-col h-full border-r border-[#333]">
-      <div className="p-4 flex items-center gap-2 border-b border-[#333]">
+      <div className="p-4 flex items-center gap-2 border-b border-[#333] shrink-0">
         <div className="w-8 h-8 bg-green-500 rounded flex items-center justify-center text-white font-bold text-xl">
           N
         </div>
         <span className="text-white font-semibold text-lg">Neer-Data-Base</span>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-4">
+      <nav className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-thumb-[#333] scrollbar-track-transparent">
         <ul className="space-y-1">
           {navItems.map((item, index) => {
             const Icon = item.icon;
@@ -92,9 +92,11 @@ const Sidebar = () => {
         </ul>
       </nav>
 
-      <div className="p-4 border-t border-[#333] flex justify-between items-center text-xs">
-        <span>Neer-Data-Base v0.1.0</span>
-        <LanguageSelector />
+      <div className="p-4 border-t border-[#333] shrink-0">
+        <div className="flex justify-between items-center text-xs">
+          <span>Neer-Data-Base v0.1.0</span>
+          <LanguageSelector />
+        </div>
       </div>
     </aside>
   );
