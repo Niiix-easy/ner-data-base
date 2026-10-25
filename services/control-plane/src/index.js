@@ -31,114 +31,143 @@ app.use((req, res, next) => {
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 
-  const expectedToken = crypto.createHmac('sha256', process.env.STUDIO_SESSION_SECRET).update('authenticated').digest('hex');
-  if (token !== expectedToken) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-
-  next();
-});
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-// Initialize system tables
-const initDb = async () => {
-  try {
-    const client = await pool.connect();
-    try {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS public.api_keys (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          key_value VARCHAR(255) UNIQUE NOT NULL,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          revoked_at TIMESTAMP WITH TIME ZONE
-        )
-      `);
-      console.log('System tables initialized successfully');
-    } finally {
-      client.release();
+    const expectedToken = crypto.createHmac('sha256', process.env.STUDIO_SESSION_SECRET).update('authenticated').digest('hex');
+    if (token !== expectedToken) {
+      return res.status(401).json({ error: 'Invalid token' });
     }
-  } catch (err) {
-    console.error('Failed to initialize system tables:', err);
-  }
-};
-initDb();
-
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
-});
-
-const executeSqlFiles = async (client, dirPath, schemaName) => {
-  if (!fs.existsSync(dirPath)) return;
-  const files = fs.readdirSync(dirPath);
-  for (const file of files) {
-    if (file.endsWith('.sql')) {
-      const sqlContent = fs.readFileSync(path.join(dirPath, file), 'utf8');
-      console.log(`Executing ${file} in schema ${schemaName}`);
-      await client.query(`SET search_path TO ${schemaName}`);
-      await client.query(sqlContent);
-      await client.query(`SET search_path TO public`);
-    }
-  }
-};
-
-const simulateMigration = async (projectName, source, tempDir) => {
-  console.log(`Starting migration from ${source} for project: ${projectName}`);
-  const schemaName = `project_${projectName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`;
-
-  try {
-    const client = await pool.connect();
+  
+    next();
+  });
+  
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+  
+  // Initialize system tables
+  const initDb = async () => {
     try {
-      await client.query('BEGIN');
-      console.log(`Creating schema: ${schemaName}`);
-      await client.query(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`);
-
-      if (tempDir) {
-        const migrationsPath = path.join(tempDir, 'supabase', 'migrations');
-        await executeSqlFiles(client, migrationsPath, schemaName);
-      } else {
-         await client.query(`
-          CREATE TABLE IF NOT EXISTS ${schemaName}.users (
+      const client = await pool.connect();
+      try {
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS public.api_keys (
             id SERIAL PRIMARY KEY,
-            email VARCHAR(255) UNIQUE NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            key_value VARCHAR(255) UNIQUE NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP WITH TIME ZONE,
+            revoked_at TIMESTAMP WITH TIME ZONE
+          );
+  
+          CREATE TABLE IF NOT EXISTS public.api_key_usage_logs (
+            id SERIAL PRIMARY KEY,
+            api_key_id INTEGER REFERENCES public.api_keys(id),
+            method VARCHAR(10),
+            path TEXT,
+            status_code INTEGER,
+            ip_address VARCHAR(45),
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-          )
+          );
         `);
+        console.log('System tables initialized successfully');
+      } finally {
+        client.release();
       }
-
-      // Grant permissions to the generated schema for PostgREST to see it
-      await client.query(`GRANT USAGE ON SCHEMA ${schemaName} TO anon, authenticated;`);
-      await client.query(`GRANT ALL ON ALL TABLES IN SCHEMA ${schemaName} TO anon, authenticated;`);
-      await client.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA ${schemaName} TO anon, authenticated;`);
-      await client.query(`GRANT ALL ON ALL ROUTINES IN SCHEMA ${schemaName} TO anon, authenticated;`);
-
-      await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON TABLES TO anon, authenticated;`);
-      await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON SEQUENCES TO anon, authenticated;`);
-      await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON ROUTINES TO anon, authenticated;`);
-
-      await client.query('COMMIT');
-      console.log(`Migration completed and permissions granted for schema: ${schemaName}`);
-
-      // We must notify PostgREST to reload its schema cache.
-      // Easiest way locally is NOTIFY pgrst. (Depends on PostgREST config, but standard).
-      await client.query('NOTIFY pgrst, \'reload schema\'');
-
-      return { success: true, schema: schemaName };
-    } catch (e) {
-      await client.query('ROLLBACK');
-      console.error('Migration transaction failed:', e);
-      throw e;
-    } finally {
-      client.release();
+    } catch (err) {
+      console.error('Failed to initialize system tables:', err);
     }
-  } catch (err) {
-    console.error(`Database connection error during migration:`, err);
-    throw err;
-  }
-};
+  };
+  initDb();
+  
+  // Background job to revoke expired keys
+  setInterval(async () => {
+    try {
+      const result = await pool.query(`
+        UPDATE public.api_keys 
+        SET revoked_at = CURRENT_TIMESTAMP 
+        WHERE expires_at IS NOT NULL 
+        AND expires_at < CURRENT_TIMESTAMP 
+        AND revoked_at IS NULL
+      `);
+      if (result.rowCount > 0) {
+        console.log(`Auto-revoked ${result.rowCount} expired API keys`);
+      }
+    } catch (err) {
+      console.error('Error in auto-revocation job:', err);
+    }
+  }, 60000); // Check every minute
+  
+  app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok' });
+  });
+  
+  const executeSqlFiles = async (client, dirPath, schemaName) => {
+    if (!fs.existsSync(dirPath)) return;
+    const files = fs.readdirSync(dirPath);
+    for (const file of files) {
+      if (file.endsWith('.sql')) {
+        const sqlContent = fs.readFileSync(path.join(dirPath, file), 'utf8');
+        console.log(`Executing ${file} in schema ${schemaName}`);
+        await client.query(`SET search_path TO ${schemaName}`);
+        await client.query(sqlContent);
+        await client.query(`SET search_path TO public`);
+      }
+    }
+  };
+  
+  const simulateMigration = async (projectName, source, tempDir) => {
+    console.log(`Starting migration from ${source} for project: ${projectName}`);
+    const schemaName = `project_${projectName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`;
+  
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        console.log(`Creating schema: ${schemaName}`);
+        await client.query(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`);
+  
+        if (tempDir) {
+          const migrationsPath = path.join(tempDir, 'supabase', 'migrations');
+          await executeSqlFiles(client, migrationsPath, schemaName);
+        } else {
+           await client.query(`
+            CREATE TABLE IF NOT EXISTS ${schemaName}.users (
+              id SERIAL PRIMARY KEY,
+              email VARCHAR(255) UNIQUE NOT NULL,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+        }
+  
+        // Grant permissions to the generated schema for PostgREST to see it
+        await client.query(`GRANT USAGE ON SCHEMA ${schemaName} TO anon, authenticated;`);
+        await client.query(`GRANT ALL ON ALL TABLES IN SCHEMA ${schemaName} TO anon, authenticated;`);
+        await client.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA ${schemaName} TO anon, authenticated;`);
+        await client.query(`GRANT ALL ON ALL ROUTINES IN SCHEMA ${schemaName} TO anon, authenticated;`);
+  
+        await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON TABLES TO anon, authenticated;`);
+        await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON SEQUENCES TO anon, authenticated;`);
+        await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA ${schemaName} GRANT ALL ON ROUTINES TO anon, authenticated;`);
+  
+        await client.query('COMMIT');
+        console.log(`Migration completed and permissions granted for schema: ${schemaName}`);
+  
+        // We must notify PostgREST to reload its schema cache.
+        // Easiest way locally is NOTIFY pgrst. (Depends on PostgREST config, but standard).
+        await client.query('NOTIFY pgrst, \'reload schema\'');
+  
+        return { success: true, schema: schemaName };
+      } catch (e) {
+        await client.query('ROLLBACK');
+        console.error('Migration transaction failed:', e);
+        throw e;
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error(`Database connection error during migration:`, err);
+      throw err;
+    }
+  };
 
 app.post('/migrate/github', async (req, res) => {
   const { repoUrl, projectName } = req.body;
@@ -345,7 +374,15 @@ app.post('/db/query', async (req, res) => {
 
 app.get('/api-keys', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, key_value, created_at, revoked_at FROM public.api_keys ORDER BY created_at DESC');
+    const result = await pool.query(`
+      SELECT 
+        k.id, k.name, k.key_value, k.created_at, k.expires_at, k.revoked_at,
+        COUNT(l.id)::int as usage_count
+      FROM public.api_keys k
+      LEFT JOIN public.api_key_usage_logs l ON k.id = l.api_key_id
+      GROUP BY k.id
+      ORDER BY k.created_at DESC
+    `);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -353,16 +390,48 @@ app.get('/api-keys', async (req, res) => {
 });
 
 app.post('/api-keys', async (req, res) => {
-  const { name } = req.body;
+  const { name, expiresAt } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
 
   try {
     const keyValue = `nk_${crypto.randomBytes(24).toString('hex')}`;
     const result = await pool.query(
-      'INSERT INTO public.api_keys (name, key_value) VALUES ($1, $2) RETURNING *',
-      [name, keyValue]
+      'INSERT INTO public.api_keys (name, key_value, expires_at) VALUES ($1, $2, $3) RETURNING *',
+      [name, keyValue, expiresAt || null]
     );
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({ ...result.rows[0], usage_count: 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api-keys/:id/rotate', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const newKeyValue = `nk_${crypto.randomBytes(24).toString('hex')}`;
+    const result = await pool.query(
+      'UPDATE public.api_keys SET key_value = $1, created_at = CURRENT_TIMESTAMP WHERE id = $2 AND revoked_at IS NULL RETURNING *',
+      [newKeyValue, id]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'API key not found or revoked' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api-keys/:id/logs', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM public.api_key_usage_logs WHERE api_key_id = $1 ORDER BY created_at DESC LIMIT 50',
+      [id]
+    );
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -392,6 +461,49 @@ app.get('/system/metrics', async (req, res) => {
       memory: Math.min(100, Math.max(0, memUsage)),
       timestamp: Date.now()
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api-keys/usage-stats', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      WITH days AS (
+        SELECT generate_series(
+          CURRENT_DATE - INTERVAL '29 days',
+          CURRENT_DATE,
+          INTERVAL '1 day'
+        )::date AS day
+      ),
+      key_names AS (
+        SELECT id, name FROM public.api_keys
+      ),
+      daily_usage AS (
+        SELECT 
+          d.day,
+          k.name,
+          COUNT(l.id) as count
+        FROM days d
+        CROSS JOIN key_names k
+        LEFT JOIN public.api_key_usage_logs l ON date_trunc('day', l.created_at)::date = d.day AND l.api_key_id = k.id
+        GROUP BY d.day, k.name
+      )
+      SELECT 
+        day::text as date,
+        json_object_agg(name, count) as stats
+      FROM daily_usage
+      GROUP BY day
+      ORDER BY day ASC
+    `);
+    
+    // Transform data for Recharts (array of {date: string, [keyName]: number})
+    const formattedData = result.rows.map(row => ({
+      date: row.date,
+      ...row.stats
+    }));
+    
+    res.json(formattedData);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

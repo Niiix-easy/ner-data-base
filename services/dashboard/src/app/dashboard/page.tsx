@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/contexts/I18nContext";
 import { SystemStatsChart } from "@/components/dashboard/SystemStatsChart";
+import { ApiKeyUsageChart } from "@/components/dashboard/ApiKeyUsageChart";
 import { 
   Database, 
   Globe, 
@@ -145,32 +146,11 @@ export default function Home() {
           </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-             <div className="lg:col-span-3 bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 shadow-2xl">
+             <div className="lg:col-span-2 bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 shadow-2xl">
                 <SystemStatsChart />
              </div>
-             <div className="space-y-6">
-                <div className="bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 space-y-6">
-                   <div>
-                     <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1">Database Load</p>
-                     <div className="flex items-baseline gap-2">
-                       <span className="text-4xl font-bold tracking-tighter">12</span>
-                       <span className="text-neutral-500 font-bold">%</span>
-                     </div>
-                   </div>
-                   <div className="h-px bg-white/5"></div>
-                   <div>
-                     <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1">Active Connections</p>
-                     <div className="flex items-baseline gap-2">
-                       <span className="text-4xl font-bold tracking-tighter">482</span>
-                       <span className="text-emerald-500 font-bold">LIVE</span>
-                     </div>
-                   </div>
-                </div>
-                <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-[2rem] p-8">
-                   <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-2">Project Uptime</p>
-                   <p className="text-3xl font-bold tracking-tighter text-white">99.999%</p>
-                   <p className="text-xs text-emerald-500/60 font-medium mt-4">Calculated over last 30 days</p>
-                </div>
+             <div className="lg:col-span-2 bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 shadow-2xl">
+                <ApiKeyUsageChart />
              </div>
           </div>
         </section>
@@ -247,7 +227,7 @@ export default function Home() {
 
       <footer className="p-12 border-t border-white/5 bg-[#030303] text-center">
         <p className="text-xs font-bold text-neutral-700 uppercase tracking-[0.4em]">
-          © 2026 Neer-Data-Base · Locally Powered by ZimaOS
+          © 2026 Ner-Data-Base · Locally Powered by ZimaOS
         </p>
       </footer>
     </div>

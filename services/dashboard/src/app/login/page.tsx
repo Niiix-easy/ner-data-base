@@ -69,7 +69,7 @@ export default function LoginPage() {
               Secure Local Environment
             </div>
             <h1 className="text-6xl font-bold tracking-tighter leading-none text-left">
-              Neer-Data-Base
+              Ner-Data-Base
             </h1>
             <p className="text-xl text-neutral-400 leading-relaxed max-w-md text-left">
               A poderosa plataforma Backend-as-a-Service, totalmente focada no seu ambiente local ZimaOS.
@@ -93,7 +93,7 @@ export default function LoginPage() {
           </div>
 
           <p className="text-xs text-neutral-600 font-medium uppercase tracking-[0.2em] text-left">
-            © 2026 NeerCloud · Proudly Local
+            © 2026 Ner-Data-Base · Proudly Local
           </p>
         </div>
 

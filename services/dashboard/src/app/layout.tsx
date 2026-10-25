@@ -9,7 +9,7 @@ const sans = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: "Neer-Data-Base Dashboard",
+  title: "Ner-Data-Base Dashboard",
   description: "ZimaOS Local Dashboard",
 };
 

@@ -51,9 +51,34 @@ const Sidebar = () => {
     { name: t('sidebar.advisors'), href: '/advisors', icon: Lightbulb },
   ];
 
+  const [expiringSoon, setExpiringSoon] = React.useState(false);
+
+  React.useEffect(() => {
+    const checkExpiring = async () => {
+      try {
+        const res = await fetch('/api/control-plane/api-keys');
+        if (!res.ok) return;
+        const keys = await res.json();
+        const soon = 3 * 24 * 60 * 60 * 1000;
+        const now = new Date().getTime();
+        const hasSoon = keys.some((k: any) => 
+          k.expires_at && 
+          !k.revoked_at && 
+          (new Date(k.expires_at).getTime() - now) > 0 &&
+          (new Date(k.expires_at).getTime() - now) < soon
+        );
+        setExpiringSoon(hasSoon);
+      } catch (err) {
+        console.error('Sidebar error checking keys:', err);
+      }
+    };
+    checkExpiring();
+  }, []);
+
   const bottomNav = [
+    { name: 'Site Inicial', href: '/', icon: Globe },
     { name: t('sidebar.settings'), href: '/settings', icon: Settings },
-    { name: t('sidebar.apiKeys') || 'API Keys', href: '/api-keys', icon: Key },
+    { name: t('sidebar.apiKeys') || 'API Keys', href: '/api-keys', icon: Key, badge: expiringSoon },
     { name: t('sidebar.webhooks'), href: '/settings/webhooks', icon: Zap },
     { name: t('sidebar.search'), href: '/search', icon: Search },
     { name: t('sidebar.account'), href: '/account', icon: User },
@@ -70,7 +95,7 @@ const Sidebar = () => {
           <div className="w-6 h-6 bg-emerald-500 rounded flex items-center justify-center text-black font-bold text-xs">
             N
           </div>
-          <span className="text-white font-bold tracking-tighter">Neer-Data-Base</span>
+          <span className="text-white font-bold tracking-tighter">Ner-Data-Base</span>
         </Link>
         <Link href="/" className="p-1 hover:bg-white/5 rounded transition-colors text-neutral-600 hover:text-white" title="Voltar ao início">
           <ChevronLeft size={16} />
@@ -138,14 +163,19 @@ const Sidebar = () => {
                 <li key={item.name}>
                   <Link
                     href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                       isActive
                         ? 'bg-white/10 text-white'
                         : 'hover:bg-white/5 hover:text-white'
                     }`}
                   >
-                    <Icon size={18} />
-                    {item.name}
+                    <div className="flex items-center gap-3">
+                      <Icon size={18} />
+                      {item.name}
+                    </div>
+                    {item.badge && (
+                      <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"></span>
+                    )}
                   </Link>
                 </li>
               );
@@ -166,7 +196,7 @@ const Sidebar = () => {
              </div>
              <div className="flex-1 overflow-hidden">
                <p className="text-xs font-bold text-white truncate">Admin User</p>
-               <p className="text-[10px] text-neutral-500 truncate">admin@neer.local</p>
+               <p className="text-[10px] text-neutral-500 truncate">admin@ner.local</p>
              </div>
           </div>
         </div>

@@ -16,7 +16,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-8">
              <Link href="/" className="flex items-center gap-2 text-xl font-bold tracking-tighter hover:opacity-80 transition-opacity">
               <div className="w-6 h-6 bg-emerald-500 rounded flex items-center justify-center text-black text-xs">N</div>
-              NeerCloud
+              Ner-Data-Base
             </Link>
             <div className="hidden lg:flex items-center gap-6 text-sm font-medium text-neutral-400">
               <Link href="#" className="hover:text-white transition-colors">Product</Link>
@@ -84,7 +84,7 @@ export default function LandingPage() {
           <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-indigo-500/20 rounded-[2rem] blur-2xl opacity-50 group-hover:opacity-100 transition duration-1000"></div>
           <div className="relative bg-[#0a0a0a] rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
             <img 
-              src="/assets/aistudio/Ner-Data-Base__Sua_Infraestrutura_Local_186d8744.jpg" 
+              src="/assets/aistudio/Ner-Data-Base__Sua_Infraestrutura_Local_a0ec14ce.png" 
               alt="Ner-Data-Base Infrastructure" 
               className="w-full object-cover opacity-100"
             />
@@ -171,7 +171,7 @@ export default function LandingPage() {
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-white font-bold text-lg tracking-tighter">
               <div className="w-5 h-5 bg-emerald-500 rounded text-black flex items-center justify-center text-[10px]">N</div>
-              NeerCloud
+              Ner-Data-Base
             </div>
             <p className="max-w-xs">A plataforma de infraestrutura local definitiva para desenvolvedores modernos.</p>
           </div>
@@ -204,7 +204,7 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-white/5 flex justify-between items-center text-xs text-neutral-600 font-medium uppercase tracking-widest">
-          <p>© 2026 NeerCloud · Proudly Self-Hosted</p>
+          <p>© 2026 Ner-Data-Base · Proudly Self-Hosted</p>
           <div className="flex gap-6">
             <Link href="#" className="hover:text-white transition-colors">Twitter</Link>
             <Link href="#" className="hover:text-white transition-colors">GitHub</Link>

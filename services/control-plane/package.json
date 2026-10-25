@@ -1,7 +1,7 @@
 {
   "name": "control-plane",
   "version": "1.0.0",
-  "description": "Control Plane for Neer-Data-Base",
+  "description": "Control Plane for Ner-Data-Base",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js"
