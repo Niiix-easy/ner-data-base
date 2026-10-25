@@ -9,7 +9,7 @@ const axios = require('axios');
 const format = require('pg-format');
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.CONTROL_PLANE_PORT || 3001;
 
 app.use(express.json());
 
@@ -314,6 +314,25 @@ app.post('/db/query', async (req, res) => {
   try {
     const result = await pool.query(query);
     res.json({ rows: result.rows || [], fields: result.fields || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/system/metrics', async (req, res) => {
+  try {
+    const os = require('os');
+    const cpuUsage = os.loadavg()[0] / os.cpus().length * 100;
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
+    const memUsage = (usedMem / totalMem) * 100;
+
+    res.json({
+      cpu: Math.min(100, Math.max(0, cpuUsage)),
+      memory: Math.min(100, Math.max(0, memUsage)),
+      timestamp: Date.now()
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

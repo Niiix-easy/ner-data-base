@@ -2,6 +2,20 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { 
+  Archive, 
+  Plus, 
+  Search, 
+  ArrowLeft, 
+  Upload, 
+  File, 
+  Trash2, 
+  MoreHorizontal,
+  ChevronRight,
+  Database,
+  RefreshCw,
+  FolderOpen
+} from 'lucide-react';
 
 export default function StorageManager() {
   const [buckets, setBuckets] = useState<any[]>([]);
@@ -9,6 +23,7 @@ export default function StorageManager() {
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     fetchBuckets();
@@ -109,89 +124,129 @@ export default function StorageManager() {
     }
   };
 
+  const filteredBuckets = buckets.filter(b => 
+    b.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
-    <div className="flex h-screen bg-gray-900 text-white font-sans relative">
-      {/* Sidebar */}
-      <div className="w-64 border-r border-gray-700 bg-gray-800 flex flex-col">
-        <div className="p-4 border-b border-gray-700">
-          <h1 className="text-xl font-bold">Storage Manager</h1>
-          <Link href="/" className="text-sm text-indigo-400 hover:text-indigo-300 mt-2 inline-block">&larr; Back to Dashboard</Link>
+    <div className="flex h-screen bg-[#030303] text-white font-sans overflow-hidden">
+      {/* Bucket List Sidebar */}
+      <div className="w-72 border-r border-white/5 bg-[#0a0a0a] flex flex-col shrink-0">
+        <div className="p-6 border-b border-white/5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-[0.2em]">Storage</h2>
+            <Link href="/dashboard" className="p-1 hover:bg-white/5 rounded transition-colors text-neutral-600 hover:text-white" title="Back to Dashboard">
+              <ArrowLeft size={16} />
+            </Link>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" size={14} />
+            <input 
+              type="text" 
+              placeholder="Search buckets..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-9 pr-4 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all"
+            />
+          </div>
         </div>
-        <div className="p-4 border-b border-gray-700">
-           <button onClick={handleCreateBucket} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded text-sm font-semibold transition-colors">
-              + New Bucket
-           </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Buckets</h3>
+        
+        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {loading ? (
-            <p className="text-sm text-gray-500">Loading...</p>
-          ) : buckets.length === 0 ? (
-            <p className="text-sm text-gray-500">No buckets found.</p>
+            <div className="p-4 space-y-3">
+              {[1, 2, 3].map(i => <div key={i} className="h-10 bg-white/5 rounded-xl animate-pulse" />)}
+            </div>
           ) : (
-            <ul className="space-y-1">
-              {buckets.map((b, idx) => (
-                <li key={idx}>
-                  <button
-                    onClick={() => loadBucketFiles(b.name)}
-                    className={`w-full text-left px-3 py-2 rounded text-sm truncate ${selectedBucket === b.name ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                  >
-                    <svg className="inline-block w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
-                    {b.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            filteredBuckets.map((b, idx) => (
+              <button
+                key={idx}
+                onClick={() => loadBucketFiles(b.name)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${selectedBucket === b.name ? 'bg-emerald-500/10 text-emerald-400' : 'hover:bg-white/5 text-neutral-400 hover:text-white'}`}
+              >
+                <Archive size={16} className={selectedBucket === b.name ? 'text-emerald-400' : 'text-neutral-600 group-hover:text-white'} />
+                <span className="truncate">{b.name}</span>
+                <span className="ml-auto text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-white/5 px-1.5 py-0.5 rounded uppercase">Public</span>
+              </button>
+            ))
           )}
+        </div>
+
+        <div className="p-6 border-t border-white/5 bg-[#070707]">
+           <button onClick={handleCreateBucket} className="w-full flex items-center justify-center gap-2 bg-white text-black py-2.5 rounded-xl text-xs font-bold hover:bg-neutral-200 transition-all shadow-lg shadow-white/5">
+             <Plus size={14} />
+             New Bucket
+           </button>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col bg-gray-900">
-        <div className="h-14 border-b border-gray-700 flex items-center justify-between px-6 bg-gray-800">
-          <h2 className="text-lg font-medium">
-            {selectedBucket ? `Bucket: ${selectedBucket}` : 'Select a bucket'}
-          </h2>
-          {selectedBucket && (
-            <div>
-              <label className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm font-semibold transition-colors cursor-pointer">
-                {uploading ? 'Uploading...' : 'Upload File'}
-                <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploading} />
-              </label>
-            </div>
-          )}
-        </div>
+      <div className="flex-1 flex flex-col bg-[#030303] overflow-hidden">
+        {/* Toolbar Header */}
+        <header className="h-14 border-b border-white/5 bg-[#0a0a0a]/50 backdrop-blur-xl flex items-center justify-between px-6 shrink-0">
+          <div className="flex items-center gap-4 text-xs font-medium text-neutral-500">
+            <Database size={14} />
+            <span className="hover:text-white transition-colors cursor-pointer">Storage</span>
+            <ChevronRight size={12} className="text-neutral-700" />
+            <span className="text-white font-bold">{selectedBucket ? selectedBucket : 'Select Bucket'}</span>
+          </div>
 
-        <div className="flex-1 overflow-auto p-6">
+          <div className="flex items-center gap-3">
+             <button onClick={() => selectedBucket && loadBucketFiles(selectedBucket)} className="p-1.5 hover:bg-white/5 rounded-lg text-neutral-500 hover:text-white transition-colors" title="Refresh">
+               <RefreshCw size={16} />
+             </button>
+             <div className="h-4 w-px bg-white/5"></div>
+             {selectedBucket && (
+                <label className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-lg shadow-emerald-900/20 active:scale-[0.98]">
+                  <Upload size={14} />
+                  {uploading ? 'Uploading...' : 'Upload Object'}
+                  <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploading} />
+                </label>
+             )}
+          </div>
+        </header>
+
+        {/* File Grid Area */}
+        <div className="flex-1 overflow-auto p-8">
           {!selectedBucket ? (
-            <div className="flex h-full items-center justify-center text-gray-500">
-              Select a bucket from the sidebar to view its files.
+            <div className="h-full flex flex-col items-center justify-center space-y-6 opacity-50">
+              <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center text-neutral-600">
+                <Archive size={32} />
+              </div>
+              <div className="text-center space-y-2">
+                <p className="text-lg font-bold tracking-tight">Select a bucket to view objects</p>
+                <p className="text-sm font-medium text-neutral-500 max-w-xs mx-auto">Gerencie seus arquivos, imagens e ativos de forma segura e local.</p>
+              </div>
             </div>
           ) : files.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4">
-               <svg className="w-16 h-16 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-               <p>This bucket is empty. Upload a file to get started.</p>
+            <div className="h-full flex flex-col items-center justify-center space-y-6 opacity-50">
+               <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center text-neutral-600">
+                <FolderOpen size={32} />
+              </div>
+               <p className="text-sm font-bold uppercase tracking-widest text-neutral-500">This bucket is empty</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                {files.map((file, i) => (
-                  <div key={i} className="bg-gray-800 border border-gray-700 rounded-lg p-4 flex flex-col hover:border-gray-500 transition-colors">
-                     <div className="flex-1 flex items-center justify-center bg-gray-900 rounded mb-4 h-32 overflow-hidden">
-                        <svg className="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                  <div key={i} className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 flex flex-col hover:border-white/10 transition-all group relative overflow-hidden">
+                     <div className="aspect-square bg-white/[0.02] rounded-2xl flex items-center justify-center text-neutral-700 mb-6 group-hover:bg-white/[0.04] transition-colors overflow-hidden">
+                        <File size={40} className="group-hover:scale-110 transition-transform" />
                      </div>
-                     <div className="flex justify-between items-start">
-                        <div className="overflow-hidden">
-                           <p className="text-sm font-medium text-gray-200 truncate" title={file.name}>{file.name}</p>
-                           <p className="text-xs text-gray-500 mt-1">{(file.size / 1024).toFixed(2)} KB</p>
+                     <div className="space-y-1">
+                        <p className="text-sm font-bold text-white truncate" title={file.name}>{file.name}</p>
+                        <div className="flex justify-between items-center">
+                           <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest">{(file.size / 1024).toFixed(1)} KB</p>
+                           <button
+                             onClick={() => handleDeleteFile(file.name)}
+                             className="p-1.5 hover:bg-rose-500/10 rounded-lg text-neutral-700 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"
+                             title="Delete"
+                           >
+                             <Trash2 size={14} />
+                           </button>
                         </div>
-                        <button
-                           onClick={() => handleDeleteFile(file.name)}
-                           className="text-red-400 hover:text-red-300 ml-2 p-1"
-                           title="Delete file"
-                        >
-                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
                      </div>
+                     <button className="absolute top-4 right-4 p-2 hover:bg-white/5 rounded-xl text-neutral-700 hover:text-white transition-colors opacity-0 group-hover:opacity-100">
+                        <MoreHorizontal size={16} />
+                     </button>
                   </div>
                ))}
             </div>

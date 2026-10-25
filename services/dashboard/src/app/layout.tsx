@@ -1,12 +1,12 @@
 import React from "react";
-
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import Sidebar from "@/components/layout/Sidebar";
 import { I18nProvider } from "@/contexts/I18nContext";
+import SidebarClientWrapper from "@/components/layout/SidebarClientWrapper";
 
-const inter = Inter({ subsets: ["latin"] });
+const sans = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans" });
+const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
   title: "Neer-Data-Base Dashboard",
@@ -21,12 +21,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.className} h-full antialiased bg-[#121212] text-white`}
+      className={`${sans.variable} ${mono.variable} font-sans h-full antialiased bg-[#0a0a0a] text-white`}
     >
       <body className="min-h-full flex">
         <I18nProvider>
-          <Sidebar />
-          <div className="flex-1 flex flex-col min-h-screen">{children}</div>
+          <SidebarClientWrapper>{children}</SidebarClientWrapper>
         </I18nProvider>
       </body>
     </html>

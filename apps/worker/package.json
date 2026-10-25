@@ -10,7 +10,7 @@
   "dependencies": {
     "kafkajs": "^2.2.4",
     "bullmq": "^4.1.0",
-    "@neer/database": "workspace:*"
+    "@neer/database": "*"
   },
   "devDependencies": {
     "typescript": "^5.1.3",

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Lock, User, ArrowLeft, ChevronRight } from "lucide-react";
 import { useI18n } from "@/contexts/I18nContext";
 
 export default function LoginPage() {
@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
-  const { t, locale, setLocale } = useI18n();
+  const { t } = useI18n();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,134 +30,156 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
-        router.push("/");
+        router.push("/dashboard");
         router.refresh();
       } else {
         const data = await res.json();
-        setError(data.error || t('login.title') + " falhou");
+        setError(data.error || "Autenticação falhou");
       }
     } catch (err) {
-      setError("Erro. Tente novamente.");
+      setError("Erro de conexão. Tente novamente.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen">
-      {/* Left section: Hero / Landing */}
-      <div className="hidden lg:flex lg:flex-1 lg:flex-col lg:justify-center lg:px-12 bg-gradient-to-br from-indigo-900 via-gray-900 to-black text-white relative overflow-hidden">
-        <div className="absolute top-6 left-6 flex items-center gap-4 z-20">
-          <select
-            value={locale}
-            onChange={(e) => setLocale(e.target.value as any)}
-            className="bg-transparent border border-gray-600 text-white rounded px-2 py-1 text-sm focus:outline-none"
-          >
-            <option value="en-US" className="bg-gray-800 text-white">English (US)</option>
-            <option value="pt-BR" className="bg-gray-800 text-white">Português (BR)</option>
-          </select>
-        </div>
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-        <div className="relative z-10 max-w-2xl">
-           <h1 className="text-5xl font-extrabold tracking-tight mb-6">{t('brand')}</h1>
-           <p className="text-xl text-gray-300 mb-8 leading-relaxed">{t('landing.description')}</p>
-           <ul className="space-y-4 text-gray-400">
-              {(t('landing.features') as unknown as string[]).map((feature: string, idx: number) => (
-                <li key={idx} className="flex items-center"><svg className="h-6 w-6 text-indigo-400 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg> {feature}</li>
-              ))}
-           </ul>
-        </div>
-      </div>
+    <div className="min-h-screen bg-[#030303] text-white font-sans flex items-center justify-center relative overflow-hidden">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 z-0 opacity-20 pointer-events-none" style={{ 
+        backgroundImage: `radial-gradient(circle at 2px 2px, #333 1px, transparent 0)`,
+        backgroundSize: '32px 32px'
+      }}></div>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-500/10 blur-[150px] rounded-full -z-10"></div>
+      
+      {/* Back Button */}
+      <Link 
+        href="/" 
+        className="absolute top-8 left-8 flex items-center gap-2 text-sm font-medium text-neutral-500 hover:text-white transition-colors group z-50"
+      >
+        <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+        Voltar ao início
+      </Link>
 
-      {/* Right section: Login Form */}
-      <div className="flex flex-1 items-center justify-center bg-gray-900 px-4 py-12 sm:px-6 lg:px-8">
-        <div className="w-full max-w-md space-y-8 bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-700">
-          <div>
-            <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-white">
-              {t('login.title')}
-            </h2>
-            <p className="mt-2 text-center text-sm text-gray-400">
-              {t('login.subtitle')}
+      <div className="w-full max-w-[1100px] grid grid-cols-1 lg:grid-cols-2 gap-12 p-8 z-10">
+        {/* Left: Marketing / Branding */}
+        <div className="hidden lg:flex flex-col justify-center space-y-12 pr-12 text-left">
+          <div className="space-y-6 text-left">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
+              Secure Local Environment
+            </div>
+            <h1 className="text-6xl font-bold tracking-tighter leading-none text-left">
+              Neer-Data-Base
+            </h1>
+            <p className="text-xl text-neutral-400 leading-relaxed max-w-md text-left">
+              A poderosa plataforma Backend-as-a-Service, totalmente focada no seu ambiente local ZimaOS.
             </p>
           </div>
-          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            <div className="space-y-4 rounded-md shadow-sm">
-              <div>
-                <label htmlFor="username" className="sr-only">
-                  Username
-                </label>
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  className="relative block w-full rounded-md border-0 bg-gray-700 py-3 px-3 text-white ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-500 sm:text-sm sm:leading-6"
-                  placeholder={t('login.username')}
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
+
+          <div className="space-y-6 text-left">
+            {[
+              "Editor SQL Inteligente integrado",
+              "Edge Functions com Deno",
+              "Gerenciamento Visual de Storage S3",
+              "100% self-hosted e seguro"
+            ].map((item) => (
+              <div key={item} className="flex items-center gap-4 group justify-start">
+                <div className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500 group-hover:text-black transition-all">
+                  <ChevronRight size={14} />
+                </div>
+                <span className="text-neutral-300 font-medium">{item}</span>
               </div>
-              <div className="relative">
-                <label htmlFor="password" className="sr-only">
-                  Admin Password
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  required
-                  className="relative block w-full rounded-md border-0 bg-gray-700 py-3 px-3 pr-10 text-white ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-500 sm:text-sm sm:leading-6"
-                  placeholder={t('login.password')}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5" aria-hidden="true" />
-                  ) : (
-                    <Eye className="h-5 w-5" aria-hidden="true" />
-                  )}
-                </button>
-              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-neutral-600 font-medium uppercase tracking-[0.2em] text-left">
+            © 2026 NeerCloud · Proudly Local
+          </p>
+        </div>
+
+        {/* Right: Login Form */}
+        <div className="flex flex-col justify-center">
+          <div className="bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-10 lg:p-14 shadow-2xl relative overflow-hidden text-left">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-indigo-500"></div>
+            
+            <div className="mb-10 text-left">
+              <h2 className="text-3xl font-bold tracking-tight mb-2 text-left">Acesso ao Painel</h2>
+              <p className="text-neutral-500 text-sm text-left">Faça login com suas credenciais de administrador.</p>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="text-sm">
-                <Link
-                  href="/login/reset-password"
-                  className="font-medium text-indigo-400 hover:text-indigo-300"
-                >
-                  {t('login.resetPassword')}
+            <form onSubmit={handleSubmit} className="space-y-6 text-left">
+              <div className="space-y-4">
+                <div className="relative group text-left">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 group-focus-within:text-emerald-500 transition-colors" size={18} />
+                  <input
+                    type="text"
+                    required
+                    className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
+                    placeholder="Nome de usuário ou email"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                  />
+                </div>
+                
+                <div className="relative group text-left">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 group-focus-within:text-emerald-500 transition-colors" size={18} />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-4 pl-12 pr-12 text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
+                    placeholder="Sua senha secreta"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between px-1">
+                <Link href="#" className="text-xs font-bold text-neutral-600 hover:text-white uppercase tracking-widest transition-colors">
+                  Esqueci minha senha
+                </Link>
+                <Link href="#" className="text-xs font-bold text-emerald-500 hover:text-emerald-400 uppercase tracking-widest transition-colors">
+                  Primeiro acesso?
                 </Link>
               </div>
-              <div className="text-sm">
-                <Link
-                  href="/login/create-password"
-                  className="font-medium text-indigo-400 hover:text-indigo-300"
-                >
-                  {t('login.createPassword')}
-                </Link>
-              </div>
-            </div>
 
-            {error && (
-              <div className="text-red-500 text-sm text-center">{error}</div>
-            )}
+              {error && (
+                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-2xl text-xs font-bold text-center">
+                  {error}
+                </div>
+              )}
 
-            <div>
               <button
                 type="submit"
                 disabled={loading}
-                className="group relative flex w-full justify-center rounded-md bg-indigo-600 py-3 px-3 text-sm font-semibold text-white hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 transition-colors"
+                className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:bg-neutral-200 disabled:opacity-50 transition-all shadow-xl shadow-white/5 active:scale-[0.98]"
               >
-                {loading ? t('login.signingIn') : t('login.signIn')}
+                {loading ? "Autenticando..." : "Entrar no Painel"}
               </button>
+            </form>
+
+            <div className="mt-12 flex items-center gap-4 text-center">
+              <div className="h-px flex-1 bg-white/5"></div>
+              <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-[0.3em]">ou continue com</span>
+              <div className="h-px flex-1 bg-white/5"></div>
             </div>
-          </form>
+
+            <div className="mt-8 grid grid-cols-2 gap-4">
+               <button className="flex items-center justify-center gap-3 bg-white/5 border border-white/10 py-3 rounded-xl hover:bg-white/10 transition-all text-xs font-bold">
+                 GitHub
+               </button>
+               <button className="flex items-center justify-center gap-3 bg-white/5 border border-white/10 py-3 rounded-xl hover:bg-white/10 transition-all text-xs font-bold">
+                 GitLab
+               </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

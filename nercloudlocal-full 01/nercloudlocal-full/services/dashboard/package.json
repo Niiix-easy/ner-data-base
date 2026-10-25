@@ -8,10 +8,10 @@
     "start": "next start -p 3000"
   },
   "dependencies": {
-    "@neercloud/config": "workspace:*",
-    "@neercloud/db": "workspace:*",
-    "@neercloud/logger": "workspace:*",
-    "@neercloud/redis": "workspace:*",
+    "@neercloud/config": "*",
+    "@neercloud/db": "*",
+    "@neercloud/logger": "*",
+    "@neercloud/redis": "*",
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

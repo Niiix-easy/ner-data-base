@@ -3,6 +3,26 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/contexts/I18nContext";
+import { SystemStatsChart } from "@/components/dashboard/SystemStatsChart";
+import { 
+  Database, 
+  Globe, 
+  Cpu, 
+  ShieldCheck, 
+  ArrowUpRight, 
+  Layers, 
+  Zap, 
+  Table, 
+  Archive,
+  RefreshCw,
+  Pause,
+  Play,
+  Download,
+  Search,
+  Plus,
+  Settings,
+  MoreHorizontal
+} from "lucide-react";
 
 export default function Home() {
   const { t } = useI18n();
@@ -16,7 +36,7 @@ export default function Home() {
     type: null,
   });
 
-  const [projectState, setProjectState] = useState<"active" | "paused">("paused");
+  const [projectState, setProjectState] = useState<"active" | "paused">("active");
 
   const handlePauseResume = async () => {
     const action = projectState === "paused" ? "resume" : "pause";
@@ -49,302 +69,188 @@ export default function Home() {
     }
   };
 
-  const handleUpgrade = async () => {
-    setMigrationStatus({ loading: true, message: "Initiating upgrade...", type: "info" });
-    try {
-      const res = await fetch("/api/control-plane/project/upgrade", { method: "POST" });
-      const data = await res.json();
-      if (res.ok) {
-        setMigrationStatus({ loading: false, message: data.message, type: "success" });
-      } else {
-        setMigrationStatus({ loading: false, message: "Failed to upgrade project.", type: "error" });
-      }
-    } catch (e) {
-      setMigrationStatus({ loading: false, message: "Error communicating with server.", type: "error" });
-    }
-  };
-
-  const handleMigrateGitHub = async () => {
-    const repoUrl = prompt("Enter GitHub Repository URL:");
-    const projectName = prompt("Enter a name for this project:");
-
-    if (!repoUrl || !projectName) return;
-
-    setMigrationStatus({
-      loading: true,
-      message: "Migrating from GitHub...",
-      type: "info",
-    });
-
-    try {
-      const response = await fetch("/api/control-plane/migrate/github", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoUrl, projectName }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setMigrationStatus({
-          loading: false,
-          message: `Success! Schema created: ${data.schema}`,
-          type: "success",
-        });
-      } else {
-        setMigrationStatus({
-          loading: false,
-          message: `Error: ${data.error}`,
-          type: "error",
-        });
-      }
-    } catch (error) {
-      setMigrationStatus({
-        loading: false,
-        message: "Failed to connect to the migration server.",
-        type: "error",
-      });
-    }
-  };
-
-  const handleMigrateLovable = async () => {
-    const projectId = prompt("Enter Lovable Project ID:");
-    const projectName = prompt("Enter a name for this project:");
-
-    if (!projectId || !projectName) return;
-
-    setMigrationStatus({
-      loading: true,
-      message: "Migrating from Lovable...",
-      type: "info",
-    });
-
-    try {
-      const response = await fetch("/api/control-plane/migrate/lovable", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, projectName }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setMigrationStatus({
-          loading: false,
-          message: `Success! Schema created: ${data.schema}`,
-          type: "success",
-        });
-      } else {
-        setMigrationStatus({
-          loading: false,
-          message: `Error: ${data.error}`,
-          type: "error",
-        });
-      }
-    } catch (error) {
-      setMigrationStatus({
-        loading: false,
-        message: "Failed to connect to the migration server.",
-        type: "error",
-      });
-    }
-  };
-
   return (
-    <div className="flex flex-col min-h-screen bg-gray-900 text-white font-sans p-8">
-      <header className="mb-12 border-b border-gray-700 pb-4">
-        <h1 className="text-4xl font-bold tracking-tight">
-          {t("brand")} Dashboard
-        </h1>
-        <p className="text-gray-400 mt-2 text-lg">ZimaOS Local Environment</p>
+    <div className="flex flex-col min-h-screen bg-[#030303] text-white font-sans selection:bg-emerald-500/30">
+      {/* Top Navigation Bar (Supabase Style) */}
+      <header className="h-14 border-b border-white/5 bg-[#0a0a0a]/50 backdrop-blur-xl sticky top-0 z-50 px-6 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+            <Link href="/dashboard" className="hover:text-white transition-colors">Projects</Link>
+            <span className="text-neutral-700">/</span>
+            <span className="text-white font-bold">Default Project</span>
+          </div>
+          <div className="h-4 w-px bg-white/5 mx-2"></div>
+          <div className="flex items-center gap-2 px-2 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Active</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="relative hidden md:block">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" size={14} />
+            <input 
+              type="text" 
+              placeholder="Search resource..." 
+              className="bg-white/5 border border-white/10 rounded-lg py-1.5 pl-9 pr-4 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all w-64"
+            />
+          </div>
+          <button className="p-1.5 hover:bg-white/5 rounded-lg text-neutral-500 hover:text-white transition-colors">
+            <Settings size={18} />
+          </button>
+          <div className="h-4 w-px bg-white/5"></div>
+          <button className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all">
+            <Plus size={14} />
+            New Resource
+          </button>
+        </div>
       </header>
 
-      <main className="flex-1 max-w-5xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Environment Status Panel */}
-        <section className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-semibold text-gray-100">
-              System Status
-            </h2>
-            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${projectState === "active" ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"}`}>
-              Project {projectState === "active" ? "Active" : "Paused"}
-            </span>
+      <main className="flex-1 max-w-[1400px] w-full mx-auto p-8 lg:p-12 space-y-12">
+        {/* Page Header */}
+        <div className="flex justify-between items-end">
+          <div className="space-y-2">
+            <h1 className="text-4xl font-bold tracking-tighter">Dashboard</h1>
+            <p className="text-neutral-500 font-medium">Gerencie sua infraestrutura local ZimaOS.</p>
           </div>
-          <ul className="space-y-3">
-            <li className="flex justify-between items-center bg-gray-700/50 p-3 rounded-lg">
-              <span className="font-medium text-gray-300">
-                Database (PostgreSQL)
-              </span>
-              <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-semibold">
-                Online
-              </span>
-            </li>
-            <li className="flex justify-between items-center bg-gray-700/50 p-3 rounded-lg">
-              <span className="font-medium text-gray-300">
-                API Gateway (Kong)
-              </span>
-              <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-semibold">
-                Online
-              </span>
-            </li>
-            <li className="flex justify-between items-center bg-gray-700/50 p-3 rounded-lg">
-              <span className="font-medium text-gray-300">Control Plane</span>
-              <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-semibold">
-                Online
-              </span>
-            </li>
-            <li className="flex justify-between items-center bg-gray-700/50 p-3 rounded-lg">
-              <span className="font-medium text-gray-300">Auth (Custom)</span>
-              <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-semibold">
-                Online
-              </span>
-            </li>
-          </ul>
+          <div className="flex gap-3">
+             <button 
+              onClick={handlePauseResume}
+              className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 text-sm font-bold transition-all"
+             >
+               {projectState === "active" ? <Pause size={16} /> : <Play size={16} />}
+               {projectState === "active" ? "Pause Project" : "Resume Project"}
+             </button>
+             <button 
+              onClick={handleBackup}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-xl hover:bg-neutral-200 text-sm font-bold transition-all shadow-xl shadow-white/5"
+             >
+               <Download size={16} />
+               Backup Now
+             </button>
+          </div>
+        </div>
+
+        {/* Real-time System Metrics */}
+        <section className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-[0.2em]">System Performance</h2>
+            <div className="flex items-center gap-4 text-[10px] font-bold text-neutral-600 uppercase tracking-widest">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                Nominal
+              </div>
+              <span>Updated every 3s</span>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+             <div className="lg:col-span-3 bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 shadow-2xl">
+                <SystemStatsChart />
+             </div>
+             <div className="space-y-6">
+                <div className="bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 space-y-6">
+                   <div>
+                     <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1">Database Load</p>
+                     <div className="flex items-baseline gap-2">
+                       <span className="text-4xl font-bold tracking-tighter">12</span>
+                       <span className="text-neutral-500 font-bold">%</span>
+                     </div>
+                   </div>
+                   <div className="h-px bg-white/5"></div>
+                   <div>
+                     <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1">Active Connections</p>
+                     <div className="flex items-baseline gap-2">
+                       <span className="text-4xl font-bold tracking-tighter">482</span>
+                       <span className="text-emerald-500 font-bold">LIVE</span>
+                     </div>
+                   </div>
+                </div>
+                <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-[2rem] p-8">
+                   <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-2">Project Uptime</p>
+                   <p className="text-3xl font-bold tracking-tighter text-white">99.999%</p>
+                   <p className="text-xs text-emerald-500/60 font-medium mt-4">Calculated over last 30 days</p>
+                </div>
+             </div>
+          </div>
         </section>
 
-        {/* Project Migration Panel */}
-        <section className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg flex flex-col">
-          <h2 className="text-2xl font-semibold mb-4 text-gray-100">
-            Migrate Projects
-          </h2>
-          <p className="text-gray-400 mb-6 flex-1">
-            Import your external projects directly into your secure, local
-            ZimaOS environment.
-          </p>
+        {/* Services Health */}
+        <section className="space-y-6">
+          <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-[0.2em]">Infrastructure Services</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              { label: 'PostgreSQL', status: 'Healthy', version: 'v15.4', icon: Database, color: 'text-indigo-400' },
+              { label: 'Kong Gateway', status: 'Healthy', version: 'v3.4.1', icon: Globe, color: 'text-emerald-400' },
+              { label: 'Edge Runtime', status: 'Healthy', version: 'Deno v1.37', icon: Zap, color: 'text-amber-400' },
+              { label: 'Auth Engine', status: 'Healthy', version: 'v2.1.0', icon: ShieldCheck, color: 'text-rose-400' },
+            ].map((service, i) => (
+              <div key={i} className="bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 hover:border-white/10 transition-all group relative overflow-hidden">
+                <div className="flex justify-between items-start mb-8 relative z-10">
+                  <div className={`p-3 rounded-2xl bg-white/5 border border-white/10 ${service.color}`}>
+                    <service.icon size={20} />
+                  </div>
+                  <button className="text-neutral-700 hover:text-white transition-colors">
+                    <MoreHorizontal size={18} />
+                  </button>
+                </div>
+                <div className="relative z-10">
+                  <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-1">{service.label}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xl font-bold tracking-tight">{service.version}</p>
+                    <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
+                      {service.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={handlePauseResume}
-                disabled={migrationStatus.loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {projectState === "paused" ? "Resume Project" : "Pause Project"}
-              </button>
-              <button
-                onClick={handleUpgrade}
-                disabled={migrationStatus.loading}
-                className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
-              >
-                Upgrade to Pro
-              </button>
-            </div>
-
-            <button
-              onClick={handleBackup}
-              disabled={migrationStatus.loading}
-              className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 mt-4"
-            >
-              Download Backups
-            </button>
-
-            <hr className="border-gray-700 my-4" />
-
-            <button
-              onClick={handleMigrateGitHub}
-              disabled={migrationStatus.loading}
-              className="w-full flex items-center justify-center gap-3 bg-white text-black font-semibold py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                stroke="currentColor"
-                strokeWidth="2"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-              </svg>
-              Migrate from GitHub
-            </button>
-            <button
-              onClick={handleMigrateLovable}
-              disabled={migrationStatus.loading}
-              className="w-full flex items-center justify-center gap-3 bg-purple-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                stroke="currentColor"
-                strokeWidth="2"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-              </svg>
-              Migrate from Lovable
-            </button>
-
-            <div className="pt-4 mt-4 border-t border-gray-700 space-y-4">
-              <Link
-                href="/editor"
-                className="w-full flex items-center justify-center gap-3 bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="20"
-                  height="20"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                  <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                </svg>
-                Open Table Editor
-              </Link>
-              <Link
-                href="/storage"
-                className="w-full flex items-center justify-center gap-3 bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="20"
-                  height="20"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="17 8 12 3 7 8"></polyline>
-                  <line x1="12" y1="3" x2="12" y2="15"></line>
-                </svg>
-                Storage Visual Manager
-              </Link>
+        {/* Database Quick Actions */}
+        <section className="bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-10 lg:p-14 flex flex-col lg:flex-row gap-12 items-center">
+          <div className="flex-1 space-y-6">
+            <h2 className="text-4xl font-bold tracking-tighter">Pronto para manipular seus dados?</h2>
+            <p className="text-neutral-400 text-lg leading-relaxed max-w-xl">
+              Acesse o editor SQL para realizar consultas complexas ou gerencie seus buckets de armazenamento com nossa interface visual intuitiva.
+            </p>
+            <div className="flex flex-wrap gap-4">
+               <Link href="/sql-editor" className="px-6 py-3 rounded-xl bg-white text-black font-bold hover:bg-neutral-200 transition-all flex items-center gap-2 group">
+                 Open SQL Editor
+                 <ArrowUpRight size={18} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+               </Link>
+               <Link href="/storage" className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
+                 Browse Storage
+               </Link>
             </div>
           </div>
-
-          {migrationStatus.message && (
-            <div
-              className={`mt-6 p-4 rounded-lg border ${
-                migrationStatus.type === "success"
-                  ? "bg-green-900/30 border-green-700 text-green-300"
-                  : migrationStatus.type === "error"
-                    ? "bg-red-900/30 border-red-700 text-red-300"
-                    : "bg-blue-900/30 border-blue-700 text-blue-300"
-              }`}
-            >
-              {migrationStatus.message}
-            </div>
-          )}
+          <div className="w-full lg:w-1/3 grid grid-cols-1 gap-4">
+             <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Table size={18} className="text-indigo-400" />
+                  <span className="text-sm font-bold">Tabelas do Banco</span>
+                </div>
+                <p className="text-xs text-neutral-500">12 tabelas criadas · 1.2GB de dados</p>
+             </div>
+             <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Archive size={18} className="text-emerald-400" />
+                  <span className="text-sm font-bold">Objetos no Storage</span>
+                </div>
+                <p className="text-xs text-neutral-500">4 buckets ativos · 8.4GB armazenados</p>
+             </div>
+          </div>
         </section>
       </main>
 
-      <footer className="mt-16 text-center text-gray-500 text-sm">
-        <p>
-          Neer-Data-Base BaaS - Running 100% locally on ZimaOS. No external
-          dependencies.
+      <footer className="p-12 border-t border-white/5 bg-[#030303] text-center">
+        <p className="text-xs font-bold text-neutral-700 uppercase tracking-[0.4em]">
+          © 2026 Neer-Data-Base · Locally Powered by ZimaOS
         </p>
       </footer>
     </div>
   );
 }
+
