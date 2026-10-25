@@ -24,7 +24,8 @@ import {
   HelpCircle,
   Globe,
   Lock,
-  ChevronLeft
+  ChevronLeft,
+  Key
 } from 'lucide-react';
 import LanguageSelector from './LanguageSelector';
 import { useI18n } from '@/contexts/I18nContext';
@@ -52,6 +53,7 @@ const Sidebar = () => {
 
   const bottomNav = [
     { name: t('sidebar.settings'), href: '/settings', icon: Settings },
+    { name: t('sidebar.apiKeys') || 'API Keys', href: '/api-keys', icon: Key },
     { name: t('sidebar.webhooks'), href: '/settings/webhooks', icon: Zap },
     { name: t('sidebar.search'), href: '/search', icon: Search },
     { name: t('sidebar.account'), href: '/account', icon: User },

@@ -43,6 +43,30 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+// Initialize system tables
+const initDb = async () => {
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.api_keys (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          key_value VARCHAR(255) UNIQUE NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          revoked_at TIMESTAMP WITH TIME ZONE
+        )
+      `);
+      console.log('System tables initialized successfully');
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('Failed to initialize system tables:', err);
+  }
+};
+initDb();
+
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
@@ -314,6 +338,41 @@ app.post('/db/query', async (req, res) => {
   try {
     const result = await pool.query(query);
     res.json({ rows: result.rows || [], fields: result.fields || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api-keys', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, name, key_value, created_at, revoked_at FROM public.api_keys ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api-keys', async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
+
+  try {
+    const keyValue = `nk_${crypto.randomBytes(24).toString('hex')}`;
+    const result = await pool.query(
+      'INSERT INTO public.api_keys (name, key_value) VALUES ($1, $2) RETURNING *',
+      [name, keyValue]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api-keys/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query('UPDATE public.api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+    res.json({ message: 'API key revoked' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

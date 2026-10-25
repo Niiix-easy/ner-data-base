@@ -34,6 +34,7 @@
     "logs": "Logs",
     "integrations": "Integrations",
     "settings": "Project Settings",
+    "apiKeys": "API Keys",
     "webhooks": "Webhooks",
     "search": "Project Search",
     "account": "Account Settings",

@@ -79,16 +79,15 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Dashboard Preview / Banner Image */}
+        {/* Hero Banner Image */}
         <div className="relative group max-w-6xl mx-auto">
-          <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-indigo-500/20 rounded-[2rem] blur-2xl opacity-0 group-hover:opacity-100 transition duration-1000"></div>
+          <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-indigo-500/20 rounded-[2rem] blur-2xl opacity-50 group-hover:opacity-100 transition duration-1000"></div>
           <div className="relative bg-[#0a0a0a] rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
             <img 
-              src="/assets/aistudio/Captura_de_tela_2026-10-22_133729_28c3effb.png" 
-              alt="Neer-Data-Base Dashboard Preview" 
-              className="w-full object-cover opacity-90"
+              src="/assets/aistudio/Ner-Data-Base__Sua_Infraestrutura_Local_186d8744.jpg" 
+              alt="Ner-Data-Base Infrastructure" 
+              className="w-full object-cover opacity-100"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent"></div>
           </div>
         </div>
       </header>
