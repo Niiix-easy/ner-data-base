@@ -1,11 +1,6 @@
 {
   "name": "ner-data-base",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*",
-    "services/*"
-  ],
   "scripts": {
     "dev": "npm --prefix services/dashboard run dev",
     "build": "npm --prefix services/dashboard run build",
