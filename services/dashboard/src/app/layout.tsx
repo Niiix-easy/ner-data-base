@@ -24,9 +24,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${sans.variable} ${mono.variable} font-sans h-full antialiased bg-[#0a0a0a] text-white`}
     >
-      <body className="min-h-full flex">
+      <body className="min-h-full flex" suppressHydrationWarning>
         <NotificationCenter />
         <Providers>{children}</Providers>
       </body>

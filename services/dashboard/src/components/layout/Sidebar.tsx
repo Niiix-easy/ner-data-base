@@ -68,6 +68,7 @@ const Sidebar = () => {
 
   const secondaryNav = [
     { name: t('sidebar.observability'), href: '/observability', icon: Activity },
+    { name: 'Automated Backups', href: '/backups', icon: Database },
     { name: t('sidebar.logs'), href: '/logs', icon: List },
     { name: t('sidebar.integrations'), href: '/integrations', icon: Blocks },
     { name: t('sidebar.advisors'), href: '/advisors', icon: Lightbulb },

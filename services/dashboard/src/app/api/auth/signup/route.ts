@@ -24,7 +24,7 @@ export async function POST(request: Request) {
       // Auto login after signup
       const token = crypto.createHmac('sha256', sessionSecret).update('authenticated').digest('hex');
 
-      const cookieStore = await cookies()
+      const cookieStore = cookies()
       cookieStore.set('neer-data-base_admin_auth', token, {
         httpOnly: true,
         secure: false,

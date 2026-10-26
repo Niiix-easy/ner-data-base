@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { QRCodeCanvas } from "qrcode.react";
+import jsQR from "jsqr";
 import { 
   Key, 
   Plus, 
@@ -25,7 +26,11 @@ import {
   Search,
   Download,
   ArrowUpRight,
-  Calendar
+  Calendar,
+  QrCode,
+  Camera,
+  Bell,
+  BellOff
 } from "lucide-react";
 import { HourlyHeatmap } from "@/components/dashboard/HourlyHeatmap";
 import { WebhookSuccessChart } from "@/components/dashboard/WebhookSuccessChart";
@@ -45,6 +50,7 @@ interface ApiKey {
   next_rotation_at: string | null;
   rpm_limit: number;
   daily_usage_limit: number | null;
+  threshold_alerts_enabled?: boolean;
   user_id: number | null;
 }
 
@@ -102,6 +108,83 @@ export default function ApiKeysPage() {
   const [selectedKeyForTag, setSelectedKeyForTag] = useState<ApiKey | null>(null);
   const [newTags, setNewTags] = useState("");
   const [qrModalKey, setQrModalKey] = useState<ApiKey | null>(null);
+  const [thresholdAlertsEnabled, setThresholdAlertsEnabled] = useState(true);
+  const [isScanningQr, setIsScanningQr] = useState(false);
+  const [scannedResult, setScannedResult] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    let animationFrameId: number;
+    let stream: MediaStream | null = null;
+
+    if (isScanningQr) {
+      navigator.mediaDevices?.getUserMedia({ video: { facingMode: "environment" } })
+        .then((s) => {
+          stream = s;
+          if (videoRef.current) {
+            videoRef.current.srcObject = s;
+            videoRef.current.setAttribute("playsinline", "true");
+            videoRef.current.play();
+            animationFrameId = requestAnimationFrame(tick);
+          }
+        })
+        .catch((err) => {
+          console.error("Camera access error:", err);
+          alert("Could not access camera for QR scanning.");
+          setIsScanningQr(false);
+        });
+    }
+
+    function tick() {
+      if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (canvas) {
+          canvas.height = video.videoHeight;
+          canvas.width = video.videoWidth;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "dontInvert",
+            });
+            if (code && code.data) {
+              setScannedResult(code.data);
+              setIsScanningQr(false);
+              if (stream) {
+                stream.getTracks().forEach((track) => track.stop());
+              }
+              return;
+            }
+          }
+        }
+      }
+      if (isScanningQr) {
+        animationFrameId = requestAnimationFrame(tick);
+      }
+    }
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+    };
+  }, [isScanningQr]);
+
+  const handleToggleThresholdAlerts = async (key: ApiKey) => {
+    const newStatus = !(key.threshold_alerts_enabled ?? true);
+    try {
+      await fetch(`/api/control-plane/api-keys/${key.id}/threshold-alerts`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: newStatus }),
+      });
+      setKeys(keys.map(k => k.id === key.id ? { ...k, threshold_alerts_enabled: newStatus } : k));
+    } catch (err) {
+      alert("Failed to update threshold alert settings");
+    }
+  };
 
   useEffect(() => {
     fetchUser();
@@ -307,7 +390,8 @@ export default function ApiKeysPage() {
           userId: currentUser?.id,
           rotationIntervalDays: rotationInterval !== "0" ? parseInt(rotationInterval) : null,
           rpmLimit: parseInt(rpmLimit),
-          dailyUsageLimit: dailyUsageLimit ? parseInt(dailyUsageLimit) : null
+          dailyUsageLimit: dailyUsageLimit ? parseInt(dailyUsageLimit) : null,
+          thresholdAlertsEnabled: thresholdAlertsEnabled
         }),
       });
       if (!res.ok) throw new Error("Failed to generate API key");
@@ -447,14 +531,12 @@ export default function ApiKeysPage() {
 
   const allTags = Array.from(new Set(keys.flatMap(k => k.tags || [])));
   
-  const allTags = Array.from(new Set(keys.flatMap(k => k.tags || [])));
-  
   const totalActiveKeys = keys.filter(k => !k.revoked_at && (!k.expires_at || new Date(k.expires_at) > new Date())).length;
-  const expiringSoonCount = keys.filter(k => k.expires_at && !k.revoked_at && (new Date(k.expires_at).getTime() - new Date().getTime()) < 7 * 24 * 60 * 60 * 1000).length;
+  const expiringKeysCount = keys.filter(k => k.expires_at && !k.revoked_at && (new Date(k.expires_at).getTime() - new Date().getTime()) < 7 * 24 * 60 * 60 * 1000).length;
   const totalRequests = keys.reduce((sum, k) => sum + k.usage_count, 0);
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#030303] text-white font-sans selection:bg-emerald-500/30 relative">
+    <div className="min-h-screen bg-[#030303] text-white font-sans selection:bg-emerald-500/30 relative">
       <header className="h-14 border-b border-white/5 bg-[#0a0a0a] backdrop-blur-xl sticky top-0 z-50 px-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link href="/dashboard" className="p-1 hover:bg-white/5 rounded transition-colors text-neutral-600 hover:text-white">
@@ -475,60 +557,13 @@ export default function ApiKeysPage() {
               placeholder="Search keys..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-lg py-1.5 pl-9 pr-4 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all w-64"
+              className="bg-white/5 border border-white/10 rounded-lg py-1.5 pl-9 pr-4 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all w-64 text-white"
             />
           </div>
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-[1400px] w-full mx-auto p-8 lg:p-12 space-y-8">
-        {/* Summary Card */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            { label: 'Total Active Keys', value: totalActiveKeys, icon: Key, color: 'text-emerald-500' },
-            { label: 'Expiring Soon', value: expiringSoonCount, icon: AlertTriangle, color: 'text-amber-500' },
-            { label: 'Total Requests', value: totalRequests.toLocaleString(), icon: Activity, color: 'text-indigo-500' },
-          ].map(stat => (
-            <div key={stat.label} className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 flex items-center gap-4 shadow-xl">
-              <div className={`p-3 rounded-2xl bg-white/5 ${stat.color}`}>
-                <stat.icon size={24} />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">{stat.label}</p>
-                <p className="text-2xl font-bold">{stat.value}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-[1400px] w-full mx-auto p-8 lg:p-12 space-y-8">
-        {/* Summary Card */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            { label: 'Total Active Keys', value: totalActiveKeys, icon: Key, color: 'text-emerald-500' },
-            { label: 'Expiring Soon', value: expiringSoonCount, icon: AlertTriangle, color: 'text-amber-500' },
-            { label: 'Total Requests', value: totalRequests.toLocaleString(), icon: Activity, color: 'text-indigo-500' },
-          ].map(stat => (
-            <div key={stat.label} className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 flex items-center gap-4 shadow-xl">
-              <div className={`p-3 rounded-2xl bg-white/5 ${stat.color}`}>
-                <stat.icon size={24} />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">{stat.label}</p>
-                <p className="text-2xl font-bold">{stat.value}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-            <input 
-              type="text" 
-              placeholder="Search keys..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-lg py-1.5 pl-9 pr-4 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all w-72 text-white"
-            />
-          </div>
+          <button onClick={() => setIsScanningQr(true)} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs font-bold hover:bg-emerald-500/20 transition-all text-emerald-400">
+            <Camera size={14} />
+            <span className="hidden sm:inline">Scan Mobile QR</span>
+          </button>
           <button onClick={handleDownloadCSV} className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs font-bold hover:bg-white/10 transition-all text-neutral-400 hover:text-white">
             <Download size={14} />
             <span className="hidden sm:inline">Export CSV</span>
@@ -591,6 +626,16 @@ export default function ApiKeysPage() {
              </select>
              <div className="h-4 w-px bg-white/5 hidden md:block"></div>
              <input type="number" placeholder="RPM" value={rpmLimit} onChange={(e) => setRpmLimit(e.target.value)} className="bg-transparent border-none focus:ring-0 text-sm px-4 py-2 w-full md:w-20 text-white" min="1" />
+             <div className="h-4 w-px bg-white/5 hidden md:block"></div>
+             <label className="flex items-center gap-2 cursor-pointer px-3 py-2 bg-white/5 rounded-xl border border-white/10 hover:border-emerald-500/30 transition-all">
+               <input
+                 type="checkbox"
+                 checked={thresholdAlertsEnabled}
+                 onChange={(e) => setThresholdAlertsEnabled(e.target.checked)}
+                 className="accent-emerald-500 w-4 h-4 rounded cursor-pointer"
+               />
+               <span className="text-xs font-bold text-neutral-300 whitespace-nowrap">Alerts (50/75/90%)</span>
+             </label>
              <button type="submit" disabled={generating || !newKeyName.trim()} className="flex items-center justify-center gap-2 bg-white text-black px-6 py-2 rounded-xl text-xs font-bold hover:bg-neutral-200 disabled:opacity-50">
                {generating ? "Gerando..." : <><Plus size={14} /> Criar Chave</>}
              </button>
@@ -671,6 +716,9 @@ export default function ApiKeysPage() {
                        <div className="absolute top-0 right-0 flex items-center gap-2">
                          {!key.revoked_at && (
                            <>
+                             <button onClick={() => setQrModalKey(key)} className="p-2.5 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 rounded-xl text-neutral-600 hover:text-blue-500">
+                               <QrCode size={16} />
+                             </button>
                              <button onClick={() => handleRotate(key.id)} className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-neutral-400 hover:text-white flex items-center gap-2 text-xs font-bold">
                                <RefreshCw size={14} /> Rotate
                              </button>
@@ -710,6 +758,9 @@ export default function ApiKeysPage() {
                                      <p className="text-[10px] text-neutral-600 font-bold uppercase flex items-center gap-1.5"><Clock size={10} /> Created {new Date(key.created_at).toLocaleDateString()}</p>
                                      {key.rotation_interval_days && <p className="text-[10px] text-indigo-500 font-bold uppercase flex items-center gap-1.5"><RefreshCw size={10} /> Auto-rotate ({key.rotation_interval_days}d)</p>}
                                      <button onClick={() => fetchLogs(key)} className="text-[10px] text-emerald-500 font-bold uppercase flex items-center gap-1.5 hover:text-emerald-400"><Activity size={10} /> {key.usage_count} Requests</button>
+                                     <button onClick={() => handleToggleThresholdAlerts(key)} className={`text-[10px] font-bold uppercase flex items-center gap-1.5 transition-colors ${key.threshold_alerts_enabled ?? true ? 'text-emerald-400 hover:text-emerald-300' : 'text-neutral-600 hover:text-neutral-400'}`} title="Toggle Threshold Alerts (50%, 75%, 90%)">
+                                       {(key.threshold_alerts_enabled ?? true) ? <Bell size={10} /> : <BellOff size={10} />} Alerts
+                                     </button>
                                   </div>
                                </div>
                              </div>
@@ -766,10 +817,10 @@ export default function ApiKeysPage() {
                                  {log.event_type === 'CREATED' ? <Plus size={18} /> : log.event_type === 'ROTATED' ? <RefreshCw size={18} /> : <Trash2 size={18} />}
                               </div>
                               <div>
-                                <p className="text-sm font-bold text-white">Chave <button onClick={() => {
-                                  const key = keys.find(k => k.id === log.api_key_id);
-                                  if (key) fetchLogs(key);
-                                }} className="text-indigo-400 hover:underline">"{log.key_name}"</button> {log.event_type === 'CREATED' ? 'gerada' : log.event_type === 'ROTATED' ? 'rotacionada' : 'revogada'}</p>
+                                 <p className="text-sm font-bold text-white">Chave <button onClick={() => {
+                                   const key = keys.find(k => k.id === log.api_key_id);
+                                   if (key) fetchLogs(key);
+                                 }} className="text-indigo-400 hover:underline">&quot;{log.key_name}&quot;</button> {log.event_type === 'CREATED' ? 'gerada' : log.event_type === 'ROTATED' ? 'rotacionada' : 'revogada'}</p>
                                 <p className="text-[10px] text-neutral-600 font-bold uppercase mt-1">ID: {log.api_key_id}</p>
                               </div>
                            </div>
@@ -922,6 +973,64 @@ export default function ApiKeysPage() {
                </div>
             </div>
         )}
+
+        {qrModalKey && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[200] p-6">
+               <div className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-8 w-full max-w-sm flex flex-col items-center gap-6 text-center">
+                  <div className="space-y-1">
+                    <h3 className="text-xl font-bold text-white">API Key QR Code</h3>
+                    <p className="text-xs text-neutral-400 font-medium">{qrModalKey.name} {qrModalKey.alias ? `(${qrModalKey.alias})` : ''}</p>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl shadow-2xl flex items-center justify-center">
+                    <QRCodeCanvas value={qrModalKey.key_value} size={220} level="H" includeMargin={true} />
+                  </div>
+                  <p className="text-[11px] text-neutral-500 font-mono break-all bg-white/5 p-3 rounded-xl w-full">{qrModalKey.key_value}</p>
+                  <div className="flex gap-3 w-full">
+                    <button onClick={() => { navigator.clipboard.writeText(qrModalKey.key_value); alert("Copied to clipboard!"); }} className="flex-1 bg-white/10 text-white hover:bg-white/20 py-2.5 rounded-xl text-xs font-bold transition-all">Copy Value</button>
+                    <button onClick={() => setQrModalKey(null)} className="flex-1 bg-white text-black hover:bg-neutral-200 py-2.5 rounded-xl text-xs font-bold transition-all">Close</button>
+                  </div>
+               </div>
+            </div>
+        )}
+
+        {isScanningQr && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[250] p-6">
+               <div className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-8 w-full max-w-md flex flex-col items-center gap-4 text-center">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2"><Camera size={20} className="text-emerald-500" /> Scan QR Code from Camera</h3>
+                  <p className="text-xs text-neutral-400">Position the QR code inside the camera viewfinder below.</p>
+                  <div className="relative w-full aspect-square bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+                    <video ref={videoRef} className="w-full h-full object-cover" />
+                    <canvas ref={canvasRef} className="hidden" />
+                    <div className="absolute inset-8 border-2 border-dashed border-emerald-500/60 rounded-xl pointer-events-none animate-pulse"></div>
+                  </div>
+                  <button onClick={() => setIsScanningQr(false)} className="w-full bg-white/10 text-white hover:bg-white/20 py-2.5 rounded-xl text-xs font-bold transition-all mt-2">Cancel Scanner</button>
+               </div>
+            </div>
+        )}
+
+        {scannedResult && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[260] p-6">
+               <div className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-8 w-full max-w-md flex flex-col gap-4 text-left">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2"><Check size={20} className="text-emerald-500" /> Scanned QR Credentials</h3>
+                  <p className="text-xs text-neutral-400">Decoded data from scanned mobile QR code:</p>
+                  <div className="bg-white/5 border border-white/10 p-4 rounded-xl font-mono text-xs text-emerald-400 break-all max-h-48 overflow-auto">
+                    {scannedResult}
+                  </div>
+                  <div className="flex gap-3 mt-2">
+                    <button onClick={() => {
+                      navigator.clipboard.writeText(scannedResult);
+                      alert("Copied scanned value to clipboard!");
+                    }} className="flex-1 bg-white/10 text-white hover:bg-white/20 py-2.5 rounded-xl text-xs font-bold transition-all">Copy Result</button>
+                    <button onClick={() => {
+                      setNewKeyAlias(scannedResult.substring(0, 20));
+                      setScannedResult(null);
+                      alert("Populated scanned value into Alias field!");
+                    }} className="flex-1 bg-emerald-500 text-black hover:bg-emerald-400 py-2.5 rounded-xl text-xs font-bold transition-all">Use as Alias</button>
+                    <button onClick={() => setScannedResult(null)} className="px-4 bg-white/5 text-neutral-400 hover:text-white py-2.5 rounded-xl text-xs font-bold transition-all">Dismiss</button>
+                  </div>
+               </div>
+            </div>
+        )}
       </main>
 
       {rotationWarningKey && (
@@ -929,8 +1038,8 @@ export default function ApiKeysPage() {
            <div className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-10 w-full max-w-xl text-center">
              <div className="w-20 h-20 bg-amber-500/10 rounded-3xl flex items-center justify-center text-amber-500 mx-auto mb-8"><AlertTriangle size={40} /></div>
              <h3 className="text-3xl font-bold mb-4">Credentials Updated</h3>
-             <p className="text-neutral-400 mb-8">The API key for "{rotationWarningKey.name}" has been rotated. Update your secrets.</p>
-             <button onClick={() => setRotationWarningKey(null)} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:bg-neutral-200">I've updated my credentials</button>
+             <p className="text-neutral-400 mb-8">The API key for &quot;{rotationWarningKey.name}&quot; has been rotated. Update your secrets.</p>
+             <button onClick={() => setRotationWarningKey(null)} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:bg-neutral-200">I&apos;ve updated my credentials</button>
            </div>
         </div>
       )}
