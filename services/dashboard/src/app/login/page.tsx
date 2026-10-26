@@ -21,6 +21,7 @@ export default function LoginPage() {
     setError("");
 
     try {
+      console.log('Attempting login for:', username);
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -30,13 +31,17 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
+        const data = await res.json();
+        console.log('Login successful:', data.user.email);
         router.push("/dashboard");
         router.refresh();
       } else {
         const data = await res.json();
+        console.error('Login failed:', data.error);
         setError(data.error || "Autenticação falhou");
       }
     } catch (err) {
+      console.error('Login connection error:', err);
       setError("Erro de conexão. Tente novamente.");
     } finally {
       setLoading(false);
@@ -145,7 +150,7 @@ export default function LoginPage() {
                 <Link href="#" className="text-xs font-bold text-neutral-600 hover:text-white uppercase tracking-widest transition-colors">
                   Esqueci minha senha
                 </Link>
-                <Link href="#" className="text-xs font-bold text-emerald-500 hover:text-emerald-400 uppercase tracking-widest transition-colors">
+                <Link href="/signup" className="text-xs font-bold text-emerald-500 hover:text-emerald-400 uppercase tracking-widest transition-colors">
                   Primeiro acesso?
                 </Link>
               </div>

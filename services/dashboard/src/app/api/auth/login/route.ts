@@ -5,8 +5,6 @@ import crypto from 'crypto';
 export async function POST(request: Request) {
   try {
     const { email, password } = await request.json()
-    const adminEmail = process.env.STUDIO_ADMIN_EMAIL
-    const adminPassword = process.env.STUDIO_ADMIN_PASSWORD
     const sessionSecret = process.env.STUDIO_SESSION_SECRET
 
     if (!sessionSecret) {
@@ -14,12 +12,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
     }
 
-    if (!adminEmail || !adminPassword) {
-      console.error('STUDIO_ADMIN_EMAIL or STUDIO_ADMIN_PASSWORD is not set in environment variables')
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
-    }
+    // Call control-plane for validation
+    const authRes = await fetch('http://localhost:3001/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
 
-    if (email === adminEmail && password === adminPassword) {
+    if (authRes.ok) {
+      const data = await authRes.json();
+      
       // Secure simple token: HMAC of the string 'authenticated' with the session secret
       const token = crypto.createHmac('sha256', sessionSecret).update('authenticated').digest('hex');
 
@@ -32,10 +34,11 @@ export async function POST(request: Request) {
         maxAge: 60 * 60 * 24 // 24 hours
       })
 
-      return NextResponse.json({ success: true })
+      return NextResponse.json({ success: true, user: data.user })
     }
 
-    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+    const errorData = await authRes.json();
+    return NextResponse.json({ error: errorData.error || 'Invalid email or password' }, { status: 401 })
   } catch (error) {
     console.error('Login error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

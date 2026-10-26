@@ -1,3 +1,91 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+
+:root {
+  --bg-main: #030303;
+  --bg-sidebar: #0a0a0a;
+  --bg-card: #0a0a0a;
+  --bg-header: rgba(10, 10, 10, 0.5);
+  --border-color: rgba(255, 255, 255, 0.05);
+  --text-main: #ffffff;
+  --text-muted: #737373;
+  --text-dim: #404040;
+}
+
+.light-mode {
+  --bg-main: #ffffff;
+  --bg-sidebar: #f5f5f5;
+  --bg-card: #f9f9f9;
+  --bg-header: rgba(255, 255, 255, 0.8);
+  --border-color: rgba(0, 0, 0, 0.1);
+  --text-main: #171717;
+  --text-muted: #525252;
+  --text-dim: #737373;
+}
+
+.high-contrast-light {
+  --bg-main: #ffffff;
+  --bg-sidebar: #ffffff;
+  --bg-card: #ffffff;
+  --bg-header: #ffffff;
+  --border-color: #000000;
+  --text-main: #000000;
+  --text-muted: #000000;
+  --text-dim: #000000;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Theme Overrides for Tailwind classes */
+.light-mode .bg-\[\#030303\], 
+.light-mode .bg-\[\#060606\],
+.high-contrast-light .bg-\[\#030303\], 
+.high-contrast-light .bg-\[\#060606\] {
+  background-color: var(--bg-main) !important;
+}
+
+.light-mode .bg-\[\#0a0a0a\],
+.light-mode .bg-\[\#070707\],
+.high-contrast-light .bg-\[\#0a0a0a\],
+.high-contrast-light .bg-\[\#070707\] {
+  background-color: var(--bg-sidebar) !important;
+}
+
+.light-mode .text-white,
+.high-contrast-light .text-white {
+  color: var(--text-main) !important;
+}
+
+.light-mode .text-neutral-400,
+.light-mode .text-neutral-500,
+.high-contrast-light .text-neutral-400,
+.high-contrast-light .text-neutral-500 {
+  color: var(--text-muted) !important;
+}
+
+.light-mode .border-white\/5,
+.light-mode .border-white\/10,
+.high-contrast-light .border-white\/5,
+.high-contrast-light .border-white\/10 {
+  border-color: var(--border-color) !important;
+}
+
+.light-mode .bg-white\/5,
+.high-contrast-light .bg-white\/5 {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+.light-mode .bg-black\/50,
+.high-contrast-light .bg-black\/50 {
+  background-color: var(--bg-header) !important;
+}
+
+
+
+

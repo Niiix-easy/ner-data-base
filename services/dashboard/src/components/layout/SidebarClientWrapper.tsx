@@ -7,9 +7,10 @@ import Sidebar from "@/components/layout/Sidebar";
 export default function SidebarClientWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLoginPage = pathname.startsWith('/login');
+  const isSignupPage = pathname.startsWith('/signup');
   const isLandingPage = pathname === '/';
 
-  if (isLoginPage || isLandingPage) {
+  if (isLoginPage || isSignupPage || isLandingPage) {
     return <div className="flex-1 flex flex-col min-h-screen">{children}</div>;
   }
 

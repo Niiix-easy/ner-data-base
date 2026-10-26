@@ -5,6 +5,9 @@ import "./globals.css";
 import { I18nProvider } from "@/contexts/I18nContext";
 import SidebarClientWrapper from "@/components/layout/SidebarClientWrapper";
 
+import Providers from "@/components/Providers";
+import { NotificationCenter } from "@/components/NotificationCenter";
+
 const sans = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
@@ -24,9 +27,8 @@ export default function RootLayout({
       className={`${sans.variable} ${mono.variable} font-sans h-full antialiased bg-[#0a0a0a] text-white`}
     >
       <body className="min-h-full flex">
-        <I18nProvider>
-          <SidebarClientWrapper>{children}</SidebarClientWrapper>
-        </I18nProvider>
+        <NotificationCenter />
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

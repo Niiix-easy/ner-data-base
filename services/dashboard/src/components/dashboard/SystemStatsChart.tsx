@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Download } from 'lucide-react';
 
 interface MetricPoint {
   time: string;
@@ -36,18 +37,30 @@ export const SystemStatsChart = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const downloadJson = () => {
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'system-stats.json';
+    a.click();
+  };
+
   return (
     <div className="h-64 w-full mt-6 bg-[#0f0f0f] border border-neutral-800 rounded-xl p-4 overflow-hidden">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">Carga do Sistema (Real-time)</h3>
-        <div className="flex gap-4 text-xs">
+        <div className="flex gap-4 items-center">
+            <button onClick={downloadJson} className="text-[10px] font-bold text-neutral-500 hover:text-white uppercase tracking-widest flex items-center gap-1.5 border border-white/5 px-2 py-1 rounded-lg">
+                <Download size={10} /> JSON
+            </button>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
-            <span className="text-neutral-300">CPU</span>
+            <span className="text-neutral-300 text-xs">CPU</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-            <span className="text-neutral-300">Memória</span>
+            <span className="text-neutral-300 text-xs">Memória</span>
           </div>
         </div>
       </div>

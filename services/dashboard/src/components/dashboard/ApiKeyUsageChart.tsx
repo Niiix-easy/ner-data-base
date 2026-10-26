@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Download } from 'lucide-react';
 
 export const ApiKeyUsageChart = () => {
   const [data, setData] = useState<any[]>([]);
@@ -45,10 +46,22 @@ export const ApiKeyUsageChart = () => {
 
   const colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6'];
 
+  const downloadJson = () => {
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'api-key-usage.json';
+    a.click();
+  };
+
   return (
     <div className="h-full w-full">
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-[0.2em]">Uso de Chaves API (Últimos 30 dias)</h3>
+        <button onClick={downloadJson} className="text-[10px] font-bold text-neutral-500 hover:text-white uppercase tracking-widest flex items-center gap-1.5 border border-white/5 px-2 py-1 rounded-lg">
+          <Download size={10} /> JSON
+        </button>
       </div>
       <div className="h-[300px] w-full">
         <ResponsiveContainer width="100%" height="100%">

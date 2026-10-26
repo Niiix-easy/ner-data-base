@@ -25,14 +25,36 @@ import {
   Globe,
   Lock,
   ChevronLeft,
-  Key
+  Key,
+  Sun,
+  Moon,
+  Contrast
 } from 'lucide-react';
 import LanguageSelector from './LanguageSelector';
 import { useI18n } from '@/contexts/I18nContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { GlobalSearch } from '@/components/layout/GlobalSearch';
 
 const Sidebar = () => {
   const pathname = usePathname();
   const { t } = useI18n();
+  const { theme, toggleTheme } = useTheme();
+  const [user, setUser] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await fetch('/api/control-plane/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data);
+        }
+      } catch (err) {
+        console.error('Sidebar error fetching user:', err);
+      }
+    };
+    fetchUser();
+  }, []);
 
   const mainNav = [
     { name: t('sidebar.overview'), href: '/dashboard', icon: Home },
@@ -90,13 +112,14 @@ const Sidebar = () => {
 
   return (
     <aside className="w-64 bg-[#0a0a0a] text-neutral-400 flex flex-col h-full border-r border-white/5 font-sans">
-      <div className="p-6 flex items-center justify-between border-b border-white/5 shrink-0">
+      <div className="p-6 flex items-center justify-between border-b border-white/5 shrink-0 bg-[#0a0a0a]">
         <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
           <div className="w-6 h-6 bg-emerald-500 rounded flex items-center justify-center text-black font-bold text-xs">
             N
           </div>
           <span className="text-white font-bold tracking-tighter">Ner-Data-Base</span>
         </Link>
+        <GlobalSearch />
         <Link href="/" className="p-1 hover:bg-white/5 rounded transition-colors text-neutral-600 hover:text-white" title="Voltar ao início">
           <ChevronLeft size={16} />
         </Link>
@@ -188,15 +211,24 @@ const Sidebar = () => {
         <div className="flex flex-col gap-4">
           <div className="flex justify-between items-center text-[10px] font-bold text-neutral-600 uppercase tracking-widest">
             <span>v0.1.0-beta</span>
-            <LanguageSelector />
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={toggleTheme}
+                className="p-1.5 hover:bg-white/5 rounded-lg transition-colors border border-white/5"
+                title={theme === 'dark' ? 'Switch to Light Mode' : theme === 'light' ? 'Switch to High Contrast' : 'Switch to Dark Mode'}
+              >
+                {theme === 'dark' ? <Sun size={14} /> : theme === 'light' ? <Contrast size={14} /> : <Moon size={14} />}
+              </button>
+              <LanguageSelector />
+            </div>
           </div>
           <div className="flex items-center gap-3 p-2 bg-white/5 rounded-xl border border-white/5">
-             <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400">
                <User size={16} />
              </div>
              <div className="flex-1 overflow-hidden">
-               <p className="text-xs font-bold text-white truncate">Admin User</p>
-               <p className="text-[10px] text-neutral-500 truncate">admin@ner.local</p>
+               <p className="text-xs font-bold text-white truncate">{user?.name || 'Admin User'}</p>
+               <p className="text-[10px] text-neutral-500 truncate">{user?.email || 'admin@ner.local'}</p>
              </div>
           </div>
         </div>

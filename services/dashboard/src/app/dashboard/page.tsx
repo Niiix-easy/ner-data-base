@@ -3,8 +3,11 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/contexts/I18nContext";
+import { ApiKeyDistributionChart } from "@/components/dashboard/ApiKeyDistributionChart";
 import { SystemStatsChart } from "@/components/dashboard/SystemStatsChart";
 import { ApiKeyUsageChart } from "@/components/dashboard/ApiKeyUsageChart";
+import { TopApiKeysChart } from "@/components/dashboard/TopApiKeysChart";
+import { SystemResources } from "@/components/dashboard/SystemResources";
 import { 
   Database, 
   Globe, 
@@ -24,6 +27,7 @@ import {
   Settings,
   MoreHorizontal
 } from "lucide-react";
+import { ProjectUsageMetrics } from "@/components/dashboard/ProjectUsageMetrics";
 
 export default function Home() {
   const { t } = useI18n();
@@ -72,8 +76,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#030303] text-white font-sans selection:bg-emerald-500/30">
-      {/* Top Navigation Bar (Supabase Style) */}
-      <header className="h-14 border-b border-white/5 bg-[#0a0a0a]/50 backdrop-blur-xl sticky top-0 z-50 px-6 flex items-center justify-between">
+      <header className="h-14 border-b border-white/5 bg-[#0a0a0a] backdrop-blur-xl sticky top-0 z-50 px-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs font-medium text-neutral-500">
             <Link href="/dashboard" className="hover:text-white transition-colors">Projects</Link>
@@ -88,6 +91,7 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
+          <SystemResources variant="compact" />
           <div className="relative hidden md:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" size={14} />
             <input 
@@ -108,7 +112,6 @@ export default function Home() {
       </header>
 
       <main className="flex-1 max-w-[1400px] w-full mx-auto p-8 lg:p-12 space-y-12">
-        {/* Page Header */}
         <div className="flex justify-between items-end">
           <div className="space-y-2">
             <h1 className="text-4xl font-bold tracking-tighter">Dashboard</h1>
@@ -132,7 +135,23 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Real-time System Metrics */}
+        {/* Quick Actions */}
+        <div className="space-y-6">
+            <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-[0.2em]">Quick Actions</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { label: 'Restart API', icon: RefreshCw },
+                { label: 'Clear Redis', icon: Archive },
+                { label: 'View Logs', icon: Table },
+              ].map(action => (
+                <button key={action.label} className="flex flex-col items-center gap-3 bg-[#0a0a0a] border border-white/5 rounded-2xl p-6 hover:border-white/10 transition-all text-neutral-400 hover:text-white">
+                  <action.icon size={24} />
+                  <span className="text-xs font-bold">{action.label}</span>
+                </button>
+              ))}
+            </div>
+        </div>
+
         <section className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-[0.2em]">System Performance</h2>
@@ -145,17 +164,27 @@ export default function Home() {
             </div>
           </div>
           
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-             <div className="lg:col-span-2 bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 shadow-2xl">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+             <div className="bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 shadow-2xl">
                 <SystemStatsChart />
              </div>
-             <div className="lg:col-span-2 bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 shadow-2xl">
+             <div className="bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 shadow-2xl">
                 <ApiKeyUsageChart />
+             </div>
+             <div className="bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 shadow-2xl">
+                <ApiKeyDistributionChart />
+             </div>
+             <div className="bg-[#0a0a0a] border border-white/5 rounded-[2rem] p-8 shadow-2xl">
+                <TopApiKeysChart />
              </div>
           </div>
         </section>
+        
+        <section className="space-y-6">
+           <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-[0.2em]">Project Usage Overview</h2>
+           <ProjectUsageMetrics />
+        </section>
 
-        {/* Services Health */}
         <section className="space-y-6">
           <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-[0.2em]">Infrastructure Services</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -189,7 +218,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Database Quick Actions */}
         <section className="bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-10 lg:p-14 flex flex-col lg:flex-row gap-12 items-center">
           <div className="flex-1 space-y-6">
             <h2 className="text-4xl font-bold tracking-tighter">Pronto para manipular seus dados?</h2>
@@ -233,4 +261,3 @@ export default function Home() {
     </div>
   );
 }
-

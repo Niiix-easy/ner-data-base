@@ -40,7 +40,9 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const t = (key: string): string => {
     const keys = key.split('.');
-    let value = dictionaries[locale];
+    let value = dictionaries[locale] || dictionaries['pt-BR']; // default to pt-BR if locale not found
+    if (!value) return key;
+
     for (const k of keys) {
       if (value[k] === undefined) return key; // fallback to key
       value = value[k];
