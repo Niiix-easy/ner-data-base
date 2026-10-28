@@ -7,11 +7,11 @@ const nextConfig = {
 
       {
         source: '/api/storage/:path*',
-        destination: 'http://storage:3002/:path*', // Proxy to Storage container
+        destination: 'http://localhost:3002/:path*', // Proxy to Storage container
       },
       {
         source: '/api/functions/:path*',
-        destination: 'http://functions:8787/:path*', // Proxy to Functions container
+        destination: 'http://localhost:8787/:path*', // Proxy to Functions container
       },
     ];
   },

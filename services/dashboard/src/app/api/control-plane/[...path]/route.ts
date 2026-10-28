@@ -17,7 +17,7 @@ async function handle(request: Request) {
 
   const url = new URL(request.url);
   const path = url.pathname.replace('/api/control-plane', '');
-  const targetUrl = `http://control-plane:3001${path}${url.search}`;
+  const targetUrl = `http://localhost:3001${path}${url.search}`;
 
   const headers = new Headers(request.headers);
   headers.set('Cookie', `neer-data-base_admin_auth=${token}`);

@@ -51,6 +51,7 @@ interface Snapshot {
   retention_days: number;
   created_at: string;
   tags?: string[];
+  storage_tier: 'standard' | 'archive';
 }
 
 interface BackupSettings {
@@ -58,7 +59,19 @@ interface BackupSettings {
   retention_days: number;
   auto_backup_enabled: boolean;
   admin_notifications_enabled: boolean;
+  storage_threshold_gb: number;
+  storage_alerts_email_enabled: boolean;
+  storage_alerts_system_enabled: boolean;
+  storage_trend_enabled: boolean;
+  admin_contact_email: string;
+  off_peak_enabled: boolean;
+  off_peak_start: string;
+  off_peak_end: string;
+  cron_expression: string;
   last_backup_at: string | null;
+  threshold_warning_percent: number;
+  threshold_critical_percent: number;
+  threshold_fatal_percent: number;
 }
 
 interface BackupSummary {
@@ -73,7 +86,20 @@ interface BucketPolicy {
   id?: number;
   bucket_type: string;
   retention_days: number;
+  archive_after_days: number;
   auto_prune_enabled: boolean;
+  max_count?: number;
+  max_size_gb?: number;
+}
+
+interface AlertLog {
+  id: number;
+  severity: string;
+  threshold_percent: number;
+  current_percent: number;
+  notified_email: boolean;
+  notified_system: boolean;
+  created_at: string;
 }
 
 interface StorageAnalyticsPoint {
@@ -91,15 +117,27 @@ export default function BackupsPage() {
     retention_days: 7,
     auto_backup_enabled: true,
     admin_notifications_enabled: true,
+    storage_threshold_gb: 10,
+    storage_alerts_email_enabled: true,
+    storage_alerts_system_enabled: true,
+    storage_trend_enabled: false,
+    admin_contact_email: "",
+    off_peak_enabled: false,
+    off_peak_start: "00:00",
+    off_peak_end: "06:00",
+    cron_expression: "0 0 * * *",
     last_backup_at: null,
+    threshold_warning_percent: 50,
+    threshold_critical_percent: 75,
+    threshold_fatal_percent: 90,
   });
 
   const [summary, setSummary] = useState<BackupSummary | null>(null);
   const [storageAnalytics, setStorageAnalytics] = useState<StorageAnalyticsPoint[]>([]);
   const [bucketPolicies, setBucketPolicies] = useState<BucketPolicy[]>([
-    { bucket_type: "daily", retention_days: 7, auto_prune_enabled: true },
-    { bucket_type: "weekly", retention_days: 30, auto_prune_enabled: true },
-    { bucket_type: "monthly", retention_days: 365, auto_prune_enabled: true },
+    { bucket_type: "daily", retention_days: 7, archive_after_days: 3, auto_prune_enabled: true },
+    { bucket_type: "weekly", retention_days: 30, archive_after_days: 14, auto_prune_enabled: true },
+    { bucket_type: "monthly", retention_days: 365, archive_after_days: 90, auto_prune_enabled: true },
   ]);
   const [savingBucketPolicies, setSavingBucketPolicies] = useState(false);
   const [bucketPoliciesSaved, setBucketPoliciesSaved] = useState(false);
@@ -110,6 +148,8 @@ export default function BackupsPage() {
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [alertLogs, setAlertLogs] = useState<AlertLog[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // User safety limits for health notification toasts
   const [dbLatencyLimit, setDbLatencyLimit] = useState(100);
@@ -139,6 +179,21 @@ export default function BackupsPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
+  // Storage Optimization & Global Retention state
+  const [isRetentionModalOpen, setIsGlobalRetentionModalOpen] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [dailyBackupTime, setDailyBackupTime] = useState("00:00");
+
+  const parseTimeFromCron = (cron: string): string => {
+    const parts = cron.split(" ");
+    if (parts.length >= 2) {
+      const min = parts[0].padStart(2, "0");
+      const hour = parts[1].padStart(2, "0");
+      return `${hour}:${min}`;
+    }
+    return "00:00";
+  };
+
   const getDefaultTagsForSnapshot = (snap: Snapshot): string[] => {
     if (snap.frequency === "manual") return ["manual-run", "pre-deploy"];
     if (snap.frequency === "weekly") return ["automated", "weekly-retention"];
@@ -153,6 +208,8 @@ export default function BackupsPage() {
   const filteredSnapshots = snapshots.filter((snap) => {
     const query = searchQuery.trim().toLowerCase();
     const tags = getTagsForSnapshot(snap);
+
+    const matchesStatus = statusFilter === "all" || snap.status === statusFilter;
 
     const matchesSearch =
       query === "" ||
@@ -180,25 +237,17 @@ export default function BackupsPage() {
       matchesDateRange = matchesDateRange && snapDate <= end;
     }
 
-    return matchesSearch && matchesTagFilter && matchesDateRange;
+    return matchesStatus && matchesSearch && matchesTagFilter && matchesDateRange;
   });
 
   useEffect(() => {
     setMounted(true);
     fetchSettingsAndSnapshots();
+    fetchAlertLogs();
     const storedDbLat = localStorage.getItem("safety_limit_db_latency");
     const storedRedisMem = localStorage.getItem("safety_limit_redis_memory");
     if (storedDbLat) setDbLatencyLimit(parseInt(storedDbLat));
     if (storedRedisMem) setRedisMemLimit(parseInt(storedRedisMem));
-
-    const storedTags = localStorage.getItem("snapshot_custom_tags");
-    if (storedTags) {
-      try {
-        setSnapshotTags(JSON.parse(storedTags));
-      } catch (err) {
-        console.error("Failed to parse stored snapshot tags:", err);
-      }
-    }
   }, []);
 
   const fetchSettingsAndSnapshots = async () => {
@@ -219,13 +268,37 @@ export default function BackupsPage() {
           retention_days: data.retention_days || 7,
           auto_backup_enabled: data.auto_backup_enabled !== undefined ? data.auto_backup_enabled : true,
           admin_notifications_enabled: data.admin_notifications_enabled !== undefined ? data.admin_notifications_enabled : true,
+          storage_threshold_gb: data.storage_threshold_gb || 10,
+          storage_alerts_email_enabled: data.storage_alerts_email_enabled !== undefined ? data.storage_alerts_email_enabled : true,
+          storage_alerts_system_enabled: data.storage_alerts_system_enabled !== undefined ? data.storage_alerts_system_enabled : true,
+          storage_trend_enabled: data.storage_trend_enabled !== undefined ? data.storage_trend_enabled : false,
+          admin_contact_email: data.admin_contact_email || "",
+          off_peak_enabled: data.off_peak_enabled !== undefined ? data.off_peak_enabled : false,
+          off_peak_start: data.off_peak_start || "00:00",
+          off_peak_end: data.off_peak_end || "06:00",
+          cron_expression: data.cron_expression || "0 0 * * *",
           last_backup_at: data.last_backup_at || null,
+          threshold_warning_percent: data.threshold_warning_percent || 50,
+          threshold_critical_percent: data.threshold_critical_percent || 75,
+          threshold_fatal_percent: data.threshold_fatal_percent || 90,
         });
+        if (data.cron_expression) {
+          setDailyBackupTime(parseTimeFromCron(data.cron_expression));
+        }
       }
 
       if (snapshotsRes.ok) {
         const list = await snapshotsRes.json();
         setSnapshots(list);
+        
+        // Build tags map from database snapshots
+        const tagsMap: Record<number, string[]> = {};
+        list.forEach((s: Snapshot) => {
+          if (s.tags && s.tags.length > 0) {
+            tagsMap[s.id] = s.tags;
+          }
+        });
+        setSnapshotTags(tagsMap);
       }
 
       if (summaryRes.ok) {
@@ -253,6 +326,17 @@ export default function BackupsPage() {
     }
   };
 
+  const fetchAlertLogs = async () => {
+    try {
+      const res = await fetch("/api/control-plane/backups/alerts-log");
+      if (res.ok) {
+        setAlertLogs(await res.json());
+      }
+    } catch (err) {
+      console.error("Failed to fetch alert logs:", err);
+    }
+  };
+
   const handleSaveSettings = async () => {
     setSaving(true);
     try {
@@ -264,6 +348,18 @@ export default function BackupsPage() {
           retentionDays: settings.retention_days,
           autoBackupEnabled: settings.auto_backup_enabled,
           adminNotificationsEnabled: settings.admin_notifications_enabled,
+          storageThresholdGb: settings.storage_threshold_gb,
+          storageAlertsEmailEnabled: settings.storage_alerts_email_enabled,
+          storageAlertsSystemEnabled: settings.storage_alerts_system_enabled,
+          storageTrendEnabled: settings.storage_trend_enabled,
+          adminContactEmail: settings.admin_contact_email,
+          offPeakEnabled: settings.off_peak_enabled,
+          offPeakStart: settings.off_peak_start,
+          offPeakEnd: settings.off_peak_end,
+          cronExpression: settings.cron_expression,
+          thresholdWarningPercent: settings.threshold_warning_percent,
+          thresholdCriticalPercent: settings.threshold_critical_percent,
+          thresholdFatalPercent: settings.threshold_fatal_percent,
         }),
       });
 
@@ -430,32 +526,55 @@ export default function BackupsPage() {
     }, 450);
   };
 
-  const handleAddTagToSnapshot = (snapshotId: number, tag: string) => {
+  const handleAddTagToSnapshot = async (snapshotId: number, tag: string) => {
     const cleaned = tag.trim().toLowerCase().replace(/\s+/g, "-");
     if (!cleaned) return;
     const targetSnap = snapshots.find((s) => s.id === snapshotId);
     if (!targetSnap) return;
 
-    setSnapshotTags((prev) => {
-      const current = prev[snapshotId] || getTagsForSnapshot(targetSnap);
-      if (current.includes(cleaned)) return prev;
-      const updated = { ...prev, [snapshotId]: [...current, cleaned] };
-      localStorage.setItem("snapshot_custom_tags", JSON.stringify(updated));
-      return updated;
-    });
+    const currentTags = getTagsForSnapshot(targetSnap);
+    if (currentTags.includes(cleaned)) return;
+    
+    const updatedTags = [...currentTags, cleaned];
+
+    try {
+      const res = await fetch(`/api/control-plane/backups/snapshots/${snapshotId}/tags`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: updatedTags }),
+      });
+
+      if (res.ok) {
+        setSnapshots(prev => prev.map(s => s.id === snapshotId ? { ...s, tags: updatedTags } : s));
+        setSnapshotTags(prev => ({ ...prev, [snapshotId]: updatedTags }));
+      }
+    } catch (err) {
+      console.error("Failed to save tag:", err);
+    }
     setNewTagInput("");
   };
 
-  const handleRemoveTagFromSnapshot = (snapshotId: number, tagToRemove: string) => {
+  const handleRemoveTagFromSnapshot = async (snapshotId: number, tagToRemove: string) => {
     const targetSnap = snapshots.find((s) => s.id === snapshotId);
     if (!targetSnap) return;
 
-    setSnapshotTags((prev) => {
-      const current = prev[snapshotId] || getTagsForSnapshot(targetSnap);
-      const updated = { ...prev, [snapshotId]: current.filter((t) => t !== tagToRemove) };
-      localStorage.setItem("snapshot_custom_tags", JSON.stringify(updated));
-      return updated;
-    });
+    const currentTags = getTagsForSnapshot(targetSnap);
+    const updatedTags = currentTags.filter((t) => t !== tagToRemove);
+
+    try {
+      const res = await fetch(`/api/control-plane/backups/snapshots/${snapshotId}/tags`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: updatedTags }),
+      });
+
+      if (res.ok) {
+        setSnapshots(prev => prev.map(s => s.id === snapshotId ? { ...s, tags: updatedTags } : s));
+        setSnapshotTags(prev => ({ ...prev, [snapshotId]: updatedTags }));
+      }
+    } catch (err) {
+      console.error("Failed to remove tag:", err);
+    }
   };
 
   const isAllFilteredSelected =
@@ -567,8 +686,325 @@ export default function BackupsPage() {
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
+
+  const calculateOptimization = () => {
+    let duplicateBytes = 0;
+    let outdatedBytes = 0;
+    let duplicateIds: number[] = [];
+    let outdatedIds: number[] = [];
+
+    // Simple duplicate detection: same frequency and same size (within 100 bytes) created within same hour
+    const seen = new Map<string, Snapshot>();
+    
+    snapshots.forEach(snap => {
+      const dateKey = new Date(snap.created_at).toISOString().slice(0, 13); // YYYY-MM-DDTHH
+      const sizeKey = Math.floor(snap.size_bytes / 100);
+      const key = `${snap.frequency}-${sizeKey}-${dateKey}`;
+      
+      if (seen.has(key)) {
+        duplicateBytes += snap.size_bytes;
+        duplicateIds.push(snap.id);
+      } else {
+        seen.set(key, snap);
+      }
+
+      // Detect outdated snapshots (not yet pruned but older than rule)
+      const policy = bucketPolicies.find(p => p.bucket_type === snap.frequency) || { retention_days: settings.retention_days };
+      const limitDate = new Date();
+      limitDate.setDate(limitDate.getDate() - policy.retention_days);
+      if (new Date(snap.created_at) < limitDate) {
+        outdatedBytes += snap.size_bytes;
+        outdatedIds.push(snap.id);
+      }
+    });
+
+    return {
+      duplicateBytes,
+      outdatedBytes,
+      totalOptimizable: duplicateBytes + outdatedBytes,
+      ids: Array.from(new Set([...duplicateIds, ...outdatedIds]))
+    };
+  };
+
+  const optimizationData = calculateOptimization();
+
+  const handleRunOptimization = async () => {
+    if (optimizationData.ids.length === 0) {
+      alert("No optimization candidates found.");
+      return;
+    }
+    
+    setOptimizing(true);
+    try {
+      const res = await fetch("/api/control-plane/backups/prune", {
+        method: "POST"
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`Optimization complete! Pruned ${data.prunedCount} snapshot(s) and freed up storage.`);
+        await fetchSettingsAndSnapshots();
+      }
+    } catch (err) {
+      alert("Failed to run optimization.");
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  const handleExportJSON = () => {
+    const dataToExport = filteredSnapshots.map(snap => ({
+      id: snap.id,
+      filename: snap.filename,
+      size_bytes: snap.size_bytes,
+      frequency: snap.frequency,
+      status: snap.status,
+      created_at: snap.created_at,
+      tags: getTagsForSnapshot(snap)
+    }));
+
+    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backup_snapshots_audit_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportLogs = () => {
+    const headers = ["ID", "Filename", "Status", "Size", "Duration (ms)", "Created At"];
+    const rows = snapshots.map(s => [
+      s.id,
+      s.filename,
+      s.status,
+      s.size_bytes,
+      (s as any).duration_ms || 0,
+      s.created_at
+    ]);
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backup_logs_audit_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // D3 Line Chart implementation
+  const d3Container = React.useRef<SVGSVGElement>(null);
+  const d3PieContainer = React.useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (mounted && d3PieContainer.current && summary) {
+      const d3 = require("d3");
+      const container = d3.select(d3PieContainer.current);
+      
+      const renderPie = () => {
+        container.selectAll("*").remove();
+
+        const width = d3PieContainer.current?.parentElement?.clientWidth || 200;
+        const height = 200;
+        const radius = Math.min(width, height) / 2;
+
+        const svg = container
+          .attr("width", width)
+          .attr("height", height)
+          .append("g")
+          .attr("transform", `translate(${width / 2},${height / 2})`);
+
+        const totalCapacityBytes = settings.storage_threshold_gb * 1024 * 1024 * 1024;
+        const usedBytes = summary.total_storage_bytes;
+        const availableBytes = Math.max(0, totalCapacityBytes - usedBytes);
+
+        const data = [
+          { label: "Used", value: usedBytes, color: "#10b981" },
+          { label: "Available", value: availableBytes, color: "#1f2937" }
+        ];
+
+        const pie = d3.pie().value((d: any) => d.value).sort(null);
+        const arc = d3.arc().innerRadius(radius * 0.6).outerRadius(radius);
+
+        const paths = svg.selectAll("path")
+          .data(pie(data))
+          .enter()
+          .append("path")
+          .attr("d", arc)
+          .attr("fill", (d: any) => d.data.color)
+          .attr("stroke", "#0a0a0a")
+          .style("stroke-width", "4px");
+
+        // Add text in the middle
+        const usedGb = (usedBytes / (1024 * 1024 * 1024)).toFixed(2);
+        const totalGb = settings.storage_threshold_gb.toFixed(1);
+        
+        svg.append("text")
+          .attr("text-anchor", "middle")
+          .attr("dy", "-0.2em")
+          .attr("fill", "white")
+          .style("font-size", "20px")
+          .style("font-weight", "800")
+          .text(`${usedGb} GB`);
+
+        svg.append("text")
+          .attr("text-anchor", "middle")
+          .attr("dy", "1.5em")
+          .attr("fill", "#737373")
+          .style("font-size", "10px")
+          .style("font-weight", "bold")
+          .style("text-transform", "uppercase")
+          .text(`of ${totalGb} GB Used`);
+      };
+
+      renderPie();
+      window.addEventListener("resize", renderPie);
+      return () => window.removeEventListener("resize", renderPie);
+    }
+  }, [mounted, summary, settings.storage_threshold_gb]);
+
+  useEffect(() => {
+    if (mounted && d3Container.current && storageAnalytics.length > 0) {
+      const d3 = require("d3");
+      const container = d3.select(d3Container.current);
+      
+      const renderChart = () => {
+        container.selectAll("*").remove();
+
+        const margin = { top: 20, right: 30, bottom: 40, left: 60 };
+        const width = d3Container.current?.parentElement?.clientWidth || 800;
+        const height = 280;
+        const chartWidth = width - margin.left - margin.right;
+        const chartHeight = height - margin.top - margin.bottom;
+
+        const svg = container
+          .attr("width", width)
+          .attr("height", height)
+          .append("g")
+          .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const x = d3.scaleTime()
+          .domain(d3.extent(storageAnalytics, (d: any) => new Date(d.raw_date)))
+          .range([0, chartWidth]);
+
+        const y = d3.scaleLinear()
+          .domain([0, Math.max(10, d3.max(storageAnalytics, (d: any) => d.storage_mb) * 1.2)])
+          .range([chartHeight, 0]);
+
+        // Grid lines
+        svg.append("g")
+          .attr("class", "grid")
+          .attr("opacity", 0.05)
+          .call(d3.axisLeft(y).tickSize(-chartWidth).tickFormat(() => ""));
+
+        svg.append("g")
+          .attr("transform", `translate(0,${chartHeight})`)
+          .call(d3.axisBottom(x).ticks(6).tickFormat(d3.timeFormat("%b %d")))
+          .attr("color", "#525252")
+          .selectAll("text")
+          .style("fill", "#737373")
+          .style("font-size", "10px")
+          .attr("dy", "1.5em");
+
+        svg.append("g")
+          .call(d3.axisLeft(y).ticks(5).tickFormat((d: any) => `${d} MB`))
+          .attr("color", "#525252")
+          .selectAll("text")
+          .style("fill", "#737373")
+          .style("font-size", "10px");
+
+        // Gradient for area
+        const gradient = container.append("defs")
+          .append("linearGradient")
+          .attr("id", "storage-gradient")
+          .attr("x1", "0%")
+          .attr("y1", "0%")
+          .attr("x2", "0%")
+          .attr("y2", "100%");
+
+        gradient.append("stop")
+          .attr("offset", "0%")
+          .attr("stop-color", "#10b981")
+          .attr("stop-opacity", 0.6);
+
+        gradient.append("stop")
+          .attr("offset", "100%")
+          .attr("stop-color", "#10b981")
+          .attr("stop-opacity", 0.05);
+
+        // Area
+        const area = d3.area()
+          .x((d: any) => x(new Date(d.raw_date)))
+          .y0(chartHeight)
+          .y1((d: any) => y(d.storage_mb))
+          .curve(d3.curveMonotoneX);
+
+        svg.append("path")
+          .datum(storageAnalytics)
+          .attr("fill", "url(#storage-gradient)")
+          .attr("d", area);
+
+        // Line
+        svg.append("path")
+          .datum(storageAnalytics)
+          .attr("fill", "none")
+          .attr("stroke", "#10b981")
+          .attr("stroke-width", 3)
+          .attr("d", d3.line()
+            .x((d: any) => x(new Date(d.raw_date)))
+            .y((d: any) => y(d.storage_mb))
+            .curve(d3.curveMonotoneX)
+          );
+
+        // Interaction
+        const focus = svg.append("g")
+          .style("display", "none");
+
+        focus.append("line")
+          .attr("class", "x-hover-line")
+          .attr("stroke", "white")
+          .attr("stroke-width", 1)
+          .attr("stroke-dasharray", "3,3")
+          .attr("y1", 0)
+          .attr("y2", chartHeight);
+
+        focus.append("circle")
+          .attr("r", 5)
+          .attr("fill", "#10b981")
+          .attr("stroke", "white")
+          .attr("stroke-width", 2);
+
+        const overlay = svg.append("rect")
+          .attr("width", chartWidth)
+          .attr("height", chartHeight)
+          .attr("fill", "transparent")
+          .on("mouseover", () => focus.style("display", null))
+          .on("mouseout", () => focus.style("display", "none"))
+          .on("mousemove", (event: any) => {
+            const bisectDate = d3.bisector((d: any) => new Date(d.raw_date)).left;
+            const x0 = x.invert(d3.pointer(event)[0]);
+            const i = bisectDate(storageAnalytics, x0, 1);
+            const d0 = storageAnalytics[i - 1];
+            const d1 = storageAnalytics[i];
+            const d = d1 && (x0.getTime() - new Date(d0.raw_date).getTime() > new Date(d1.raw_date).getTime() - x0.getTime()) ? d1 : d0;
+            
+            focus.attr("transform", `translate(${x(new Date(d.raw_date))},0)`);
+            focus.select("circle").attr("cy", y(d.storage_mb));
+          });
+      };
+
+      renderChart();
+      window.addEventListener("resize", renderChart);
+      return () => window.removeEventListener("resize", renderChart);
+    }
+  }, [mounted, storageAnalytics]);
 
   // Recharts Custom Tooltip
   const CustomAnalyticsTooltip = ({ active, payload, label }: any) => {
@@ -595,6 +1031,28 @@ export default function BackupsPage() {
   const latestAnalyticsMb = storageAnalytics.length > 0 ? storageAnalytics[storageAnalytics.length - 1].storage_mb : 0;
   const maxAnalyticsMb = storageAnalytics.length > 0 ? Math.max(...storageAnalytics.map(a => a.storage_mb)) : 0;
   const avgAnalyticsMb = storageAnalytics.length > 0 ? parseFloat((storageAnalytics.reduce((acc, a) => acc + a.storage_mb, 0) / storageAnalytics.length).toFixed(1)) : 0;
+
+  const checkStorageTrendAlert = () => {
+    if (storageAnalytics.length < 5) return { warning: false, projectedMb: 0 };
+    
+    // Simple linear regression or avg growth rate of last 7 days
+    const recent = storageAnalytics.slice(-7);
+    const growthRates = [];
+    for (let i = 1; i < recent.length; i++) {
+      growthRates.push(recent[i].storage_mb - recent[i-1].storage_mb);
+    }
+    const avgDailyGrowth = growthRates.reduce((a, b) => a + b, 0) / growthRates.length;
+    const projected48h = latestAnalyticsMb + (avgDailyGrowth * 2);
+    
+    const thresholdMb = settings.storage_threshold_gb * 1024;
+    return {
+      warning: projected48h >= thresholdMb,
+      projectedMb: parseFloat(projected48h.toFixed(2)),
+      avgDailyGrowth: parseFloat(avgDailyGrowth.toFixed(2))
+    };
+  };
+
+  const trendAlert = checkStorageTrendAlert();
 
   return (
     <div className="min-h-screen bg-[#030303] text-white font-sans selection:bg-emerald-500/30">
@@ -690,8 +1148,8 @@ export default function BackupsPage() {
                 <TrendingUp size={24} />
               </div>
               <div>
-                <h2 className="text-xl font-bold">Storage Analytics (30-Day Trend)</h2>
-                <p className="text-xs text-neutral-500 font-medium">Historical snapshot storage consumption and cumulative growth pattern</p>
+                <h2 className="text-xl font-bold">Storage Analytics (30-Day Area Chart)</h2>
+                <p className="text-xs text-neutral-500 font-medium">Visualizing total database storage consumption trends and growth patterns</p>
               </div>
             </div>
 
@@ -711,40 +1169,9 @@ export default function BackupsPage() {
             </div>
           </div>
 
-          <div className="h-[280px] w-full pt-4">
+          <div className="h-[280px] w-full pt-4 relative">
             {mounted && storageAnalytics.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={storageAnalytics} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="storageGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke="#525252" 
-                    tick={{ fill: "#737373", fontSize: 11 }}
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    stroke="#525252" 
-                    tick={{ fill: "#737373", fontSize: 11 }}
-                    tickFormatter={(val) => `${val} MB`}
-                    tickLine={false}
-                  />
-                  <Tooltip content={<CustomAnalyticsTooltip />} />
-                  <Area 
-                    type="monotone" 
-                    dataKey="storage_mb" 
-                    stroke="#10b981" 
-                    strokeWidth={2.5}
-                    fillOpacity={1} 
-                    fill="url(#storageGradient)" 
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              <svg ref={d3Container} className="w-full h-full"></svg>
             ) : (
               <div className="h-full flex items-center justify-center text-xs text-neutral-600">
                 <RefreshCw size={18} className="animate-spin mr-2" /> Loading Storage Analytics Chart...
@@ -753,87 +1180,56 @@ export default function BackupsPage() {
           </div>
         </div>
 
-        {/* Bucket Specific Retention Policies Section */}
-        <div className="bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-8 space-y-8 shadow-2xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-2xl border border-indigo-500/20">
-                <Sliders size={24} />
+        {/* NEW: Storage Optimization Panel */}
+        <div className="bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-8 shadow-2xl overflow-hidden relative group">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 blur-[100px] rounded-full -mr-32 -mt-32"></div>
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-8 relative z-10">
+            <div className="space-y-4 max-w-2xl text-center lg:text-left">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
+                <ShieldCheck size={12} /> Optimization Engine Active
               </div>
-              <div>
-                <h2 className="text-xl font-bold">Bucket Specific Retention Policies</h2>
-                <p className="text-xs text-neutral-500 font-medium">Define specific expiry days and auto-pruning rules for daily, weekly, and monthly buckets</p>
+              <h2 className="text-3xl font-extrabold tracking-tight">Storage Optimization</h2>
+              <p className="text-neutral-400 text-sm leading-relaxed">
+                Our engine analyzed <span className="text-white font-bold">{snapshots.length}</span> snapshot files and identified redundant or outdated data that can be safely removed to reclaim disk space.
+              </p>
+              
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4">
+                <div className="px-4 py-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                  <p className="text-[10px] font-bold text-neutral-500 uppercase">Estimated Savings</p>
+                  <p className="text-xl font-extrabold text-emerald-400">{formatSize(optimizationData.totalOptimizable)}</p>
+                </div>
+                <div className="px-4 py-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                  <p className="text-[10px] font-bold text-neutral-500 uppercase">Redundant Files</p>
+                  <p className="text-xl font-extrabold text-white">{optimizationData.ids.length}</p>
+                </div>
+                <div className="px-4 py-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                  <p className="text-[10px] font-bold text-neutral-500 uppercase">Storage Health</p>
+                  <p className="text-xl font-extrabold text-indigo-400">{optimizationData.totalOptimizable > 1024 * 1024 * 100 ? "Action Recommended" : "Excellent"}</p>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-3 self-start sm:self-auto">
-              <button
-                onClick={handlePruneSnapshots}
-                disabled={pruning}
-                className="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 disabled:opacity-50"
-                title="Execute snapshot retention pruning immediately"
-              >
-                {pruning ? <RefreshCw className="animate-spin" size={14} /> : <Trash2 size={14} className="text-amber-400" />}
-                <span>Prune Old Snapshots</span>
-              </button>
-              <button
-                onClick={handleSaveBucketPolicies}
-                disabled={savingBucketPolicies}
-                className="bg-emerald-500 text-black hover:bg-emerald-400 px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 disabled:opacity-50 shadow-md shadow-emerald-500/20"
-              >
-                {savingBucketPolicies ? <RefreshCw className="animate-spin" size={14} /> : bucketPoliciesSaved ? <Check size={14} /> : <ShieldCheck size={14} />}
-                <span>{bucketPoliciesSaved ? "Policies Saved!" : "Save Bucket Policies"}</span>
-              </button>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {bucketPolicies.map((bp, index) => (
-              <div key={bp.bucket_type} className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 space-y-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-widest text-emerald-400 flex items-center gap-2">
-                    <Database size={14} /> {bp.bucket_type} Bucket
-                  </span>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <span className="text-[10px] text-neutral-500 font-bold uppercase">Auto-Prune</span>
-                    <input
-                      type="checkbox"
-                      checked={bp.auto_prune_enabled}
-                      onChange={(e) => {
-                        const next = [...bucketPolicies];
-                        next[index].auto_prune_enabled = e.target.checked;
-                        setBucketPolicies(next);
-                      }}
-                      className="accent-emerald-500 rounded cursor-pointer"
-                    />
-                  </label>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-neutral-400">Expiry Period (Days)</label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      min="1"
-                      max="3650"
-                      value={bp.retention_days}
-                      onChange={(e) => {
-                        const next = [...bucketPolicies];
-                        next[index].retention_days = parseInt(e.target.value) || 1;
-                        setBucketPolicies(next);
-                      }}
-                      className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-white font-mono w-full focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
-                    />
-                    <span className="text-xs font-bold text-neutral-500">Days</span>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-neutral-500">
-                  Snapshots in <span className="text-white font-bold">{bp.bucket_type}</span> older than <span className="text-amber-400 font-bold">{bp.retention_days} days</span> are purged automatically.
-                </p>
+            <div className="flex-1 flex flex-col items-center justify-center py-4">
+              <div className="relative w-[220px] h-[220px]">
+                <svg ref={d3PieContainer} className="w-full h-full"></svg>
               </div>
-            ))}
+            </div>
+
+            <button
+              onClick={handleRunOptimization}
+              disabled={optimizing || optimizationData.ids.length === 0}
+              className="px-10 py-5 rounded-[2rem] bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold flex flex-col items-center gap-1 transition-all disabled:opacity-30 shadow-2xl shadow-emerald-500/20"
+            >
+              <div className="flex items-center gap-2">
+                {optimizing ? <RefreshCw className="animate-spin" size={20} /> : <TrendingUp size={20} />}
+                <span className="text-lg">Run Optimization</span>
+              </div>
+              <span className="text-[10px] uppercase tracking-widest opacity-70">Immediate Space Recovery</span>
+            </button>
           </div>
         </div>
+
+
 
         {/* Configurations Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -845,22 +1241,77 @@ export default function BackupsPage() {
                   <HardDrive size={24} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold">Automated Schedule Policy</h2>
+                  <h2 className="text-xl font-bold">Backup Settings & Automated Schedule</h2>
                   <p className="text-xs text-neutral-500 font-medium">Local storage backup frequency and primary retention rules</p>
                 </div>
               </div>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <span className="text-xs font-bold text-neutral-400">Auto-Backup</span>
-                <input
-                  type="checkbox"
-                  checked={settings.auto_backup_enabled}
-                  onChange={(e) => setSettings({ ...settings, auto_backup_enabled: e.target.checked })}
-                  className="accent-emerald-500 w-5 h-5 rounded cursor-pointer"
-                />
-              </label>
+              <button
+                onClick={() => setIsGlobalRetentionModalOpen(true)}
+                className="flex items-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-all"
+              >
+                <Sliders size={14} />
+                <span>Retention Limits</span>
+              </button>
             </div>
 
+            {/* NEW: Dedicated Automated Schedule Section */}
             <div className="space-y-6">
+              <div className="p-6 rounded-3xl bg-emerald-500/5 border border-emerald-500/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl border ${settings.auto_backup_enabled ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-white/5 text-neutral-500 border-white/5'}`}>
+                      <Calendar size={18} />
+                    </div>
+                    <div>
+                      <span className="text-sm font-bold text-white block">Automated Daily Backups</span>
+                      <span className="text-[11px] text-neutral-400 block">Trigger a full database snapshot once every 24 hours</span>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.auto_backup_enabled}
+                    onChange={(e) => setSettings({ ...settings, auto_backup_enabled: e.target.checked })}
+                    className="accent-emerald-500 w-6 h-6 rounded cursor-pointer"
+                  />
+                </div>
+
+                {settings.auto_backup_enabled && (
+                  <div className="pt-4 border-t border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest block ml-1">Daily Execution Time</label>
+                      <p className="text-[11px] text-neutral-400">Backups will run daily at the selected time</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Clock size={16} className="text-emerald-400" />
+                      <input
+                        type="time"
+                        value={dailyBackupTime}
+                        onChange={(e) => {
+                          const newTime = e.target.value;
+                          setDailyBackupTime(newTime);
+                          const [hour, min] = newTime.split(":");
+                          const newCron = `${parseInt(min)} ${parseInt(hour)} * * *`;
+                          setSettings({ ...settings, cron_expression: newCron, frequency: 'daily' });
+                        }}
+                        className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm text-white font-mono outline-none focus:border-emerald-500/50 [color-scheme:dark]"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-6 pt-4 border-t border-white/5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-extrabold uppercase tracking-widest text-neutral-500 ml-1">Notifications & Advanced</h3>
+                <button
+                  onClick={handleExportLogs}
+                  className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors uppercase tracking-widest flex items-center gap-1.5"
+                  title="Generate CSV audit report of all backup attempts"
+                >
+                  <FileCode size={12} /> Export Logs (CSV)
+                </button>
+              </div>
               {/* Admin Notifications Toggle */}
               <label className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 cursor-pointer hover:bg-white/[0.04] transition-colors">
                 <div className="flex items-center gap-3">
@@ -880,48 +1331,182 @@ export default function BackupsPage() {
                 />
               </label>
 
-              <div className="space-y-2">
+              {settings.admin_notifications_enabled && (
+                <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Administrator Contact Email</label>
+                  <input
+                    type="email"
+                    placeholder="admin@ner-data-base.io"
+                    value={settings.admin_contact_email}
+                    onChange={(e) => setSettings({ ...settings, admin_contact_email: e.target.value })}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/50"
+                  />
+                </div>
+              )}
+
                 <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2">
                   <Calendar size={14} className="text-indigo-400" /> Backup Frequency
                 </label>
-                <div className="grid grid-cols-2 gap-4">
-                  {["daily", "weekly"].map((freq) => (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {["6h", "daily", "weekly"].map((freq) => (
                     <button
                       key={freq}
                       type="button"
-                      onClick={() => setSettings({ ...settings, frequency: freq })}
+                      onClick={() => {
+                        const nextSettings = { ...settings, frequency: freq };
+                        if (freq === "6h") nextSettings.cron_expression = "0 */6 * * *";
+                        setSettings(nextSettings);
+                      }}
                       className={`py-3 px-4 rounded-xl text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 border ${
                         settings.frequency === freq
                           ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400"
                           : "bg-white/5 border-white/5 text-neutral-400 hover:text-white"
                       }`}
                     >
-                      {freq === "daily" ? "Daily (Every 24h)" : "Weekly (Every 7 Days)"}
+                      {freq === "6h" ? "6 Hours" : freq === "daily" ? "Daily" : "Weekly"}
                     </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, frequency: "custom" })}
+                    className={`py-3 px-4 rounded-xl text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 border ${
+                      settings.frequency === "custom"
+                        ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-400"
+                        : "bg-white/5 border-white/5 text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    Custom
+                  </button>
+                </div>
+              </div>
+
+              {settings.frequency === "custom" && (
+                <div className="space-y-3 p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10 animate-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest ml-1">Cron Schedule Expression</label>
+                    <Link href="https://crontab.guru" target="_blank" className="text-[10px] font-bold text-neutral-500 hover:text-white underline uppercase">Helper</Link>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="0 0 * * *"
+                    value={settings.cron_expression}
+                    onChange={(e) => setSettings({ ...settings, cron_expression: e.target.value })}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white font-mono outline-none focus:border-indigo-500/50"
+                  />
+                  <p className="text-[10px] text-neutral-500 italic px-1">
+                    Standard 5-field format: minute, hour, day, month, day-of-week.
+                  </p>
+                </div>
+              )}
+
+              {/* NEW: Bucket-specific frequency-based retention rules within the main card */}
+              <div className="space-y-4 pt-4 border-t border-white/5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2">
+                    <ShieldCheck size={14} className="text-emerald-400" /> Frequency-based Expiry Rules
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setIsGlobalRetentionModalOpen(true)}
+                      className="text-[10px] font-bold text-neutral-400 hover:text-white transition-colors uppercase tracking-widest flex items-center gap-1.5"
+                    >
+                      <Sliders size={12} /> Global Limits
+                    </button>
+                    <button
+                      onClick={handleSaveBucketPolicies}
+                      className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors uppercase tracking-widest"
+                    >
+                      {savingBucketPolicies ? "Saving..." : bucketPoliciesSaved ? "Saved!" : "Update Expiry"}
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-3">
+                  {bucketPolicies.map((bp, index) => (
+                    <div key={bp.bucket_type} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-white/5 text-neutral-500">
+                          <Database size={12} />
+                        </div>
+                        <span className="text-xs font-bold text-white capitalize">{bp.bucket_type}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <span className="text-[9px] text-neutral-600 font-bold uppercase">Auto</span>
+                          <input
+                            type="checkbox"
+                            checked={bp.auto_prune_enabled}
+                            onChange={(e) => {
+                              const next = [...bucketPolicies];
+                              next[index].auto_prune_enabled = e.target.checked;
+                              setBucketPolicies(next);
+                            }}
+                            className="accent-emerald-500 w-3 h-3 rounded"
+                          />
+                        </label>
+                        <div className="h-4 w-px bg-white/5"></div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            value={bp.retention_days}
+                            onChange={(e) => {
+                              const next = [...bucketPolicies];
+                              next[index].retention_days = parseInt(e.target.value) || 1;
+                              setBucketPolicies(next);
+                            }}
+                            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white font-mono w-14 focus:outline-none focus:border-emerald-500/50"
+                          />
+                          <span className="text-[10px] font-bold text-neutral-500 uppercase">Days</span>
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2">
-                  <Clock size={14} className="text-amber-400" /> Default Retention
+              {/* NEW: Off-peak Hours Toggle & Window Picker */}
+              <div className="space-y-4 pt-4 border-t border-white/5">
+                <label className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 cursor-pointer hover:bg-white/[0.04] transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl border ${settings.off_peak_enabled ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-white/5 text-neutral-500 border-white/5'}`}>
+                      <Clock size={18} />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-white block">Backup at Off-peak Hours</span>
+                      <span className="text-[11px] text-neutral-400 block">Restrict automated backups to a specific low-traffic window</span>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.off_peak_enabled}
+                    onChange={(e) => setSettings({ ...settings, off_peak_enabled: e.target.checked })}
+                    className="accent-indigo-500 w-5 h-5 rounded cursor-pointer"
+                  />
                 </label>
-                <div className="grid grid-cols-3 gap-3">
-                  {[7, 14, 30].map((days) => (
-                    <button
-                      key={days}
-                      type="button"
-                      onClick={() => setSettings({ ...settings, retention_days: days })}
-                      className={`py-3 px-3 rounded-xl text-xs font-bold transition-all border ${
-                        settings.retention_days === days
-                          ? "bg-amber-500/10 border-amber-500/40 text-amber-400"
-                          : "bg-white/5 border-white/5 text-neutral-400 hover:text-white"
-                      }`}
-                    >
-                      Keep {days} Days
-                    </button>
-                  ))}
-                </div>
+
+                {settings.off_peak_enabled && (
+                  <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Window Start</label>
+                      <input
+                        type="time"
+                        value={settings.off_peak_start}
+                        onChange={(e) => setSettings({ ...settings, off_peak_start: e.target.value })}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-indigo-500/50 [color-scheme:dark]"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Window End</label>
+                      <input
+                        type="time"
+                        value={settings.off_peak_end}
+                        onChange={(e) => setSettings({ ...settings, off_peak_end: e.target.value })}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-indigo-500/50 [color-scheme:dark]"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-4 flex items-center justify-between border-t border-white/5">
@@ -1003,6 +1588,198 @@ export default function BackupsPage() {
               </button>
             </div>
           </div>
+
+          {/* NEW: Storage Alerts Threshold Card */}
+          <div className="bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-8 space-y-8 shadow-2xl flex flex-col justify-between">
+            <div className="flex items-center justify-between border-b border-white/5 pb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-amber-500/10 text-amber-400 rounded-2xl border border-amber-500/20">
+                  <Bell size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold">Storage Capacity Alerts</h2>
+                  <p className="text-xs text-neutral-500 font-medium">Set thresholds for cumulative snapshot storage notifications</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-6 flex-1 flex flex-col justify-center">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-neutral-400 uppercase tracking-wider flex items-center gap-2">
+                    <HardDrive size={14} className="text-amber-400" /> Storage Threshold Limit
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="1000"
+                      value={settings.storage_threshold_gb}
+                      onChange={(e) => setSettings({ ...settings, storage_threshold_gb: parseInt(e.target.value) || 1 })}
+                      className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-amber-400 font-mono w-16 focus:outline-none focus:border-amber-500/50 text-right"
+                    />
+                    <span className="text-amber-400 font-mono text-xs uppercase">GB</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  step="1"
+                  value={settings.storage_threshold_gb > 100 ? 100 : settings.storage_threshold_gb}
+                  onChange={(e) => setSettings({ ...settings, storage_threshold_gb: parseInt(e.target.value) })}
+                  className="w-full accent-amber-500 bg-white/10 h-2 rounded-lg cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Notification Channels</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 cursor-pointer hover:bg-white/[0.04] transition-colors">
+                    <div className="flex items-center gap-3">
+                      <Mail size={16} className={settings.storage_alerts_email_enabled ? "text-emerald-400" : "text-neutral-500"} />
+                      <span className="text-[11px] font-bold text-white">Email Alerts</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.storage_alerts_email_enabled}
+                      onChange={(e) => setSettings({ ...settings, storage_alerts_email_enabled: e.target.checked })}
+                      className="accent-emerald-500 w-4 h-4 rounded cursor-pointer"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 cursor-pointer hover:bg-white/[0.04] transition-colors">
+                    <div className="flex items-center gap-3">
+                      <Activity size={16} className={settings.storage_alerts_system_enabled ? "text-indigo-400" : "text-neutral-500"} />
+                      <span className="text-[11px] font-bold text-white">System Alerts</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.storage_alerts_system_enabled}
+                      onChange={(e) => setSettings({ ...settings, storage_alerts_system_enabled: e.target.checked })}
+                      className="accent-indigo-500 w-4 h-4 rounded cursor-pointer"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Severity Thresholds */}
+              <div className="space-y-4 pt-2">
+                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Severity Thresholds (%)</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5 p-3 rounded-xl bg-amber-500/5 border border-amber-500/10">
+                    <label className="text-[9px] font-bold text-amber-500 uppercase tracking-tighter block">Warning</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={settings.threshold_warning_percent}
+                      onChange={(e) => setSettings({ ...settings, threshold_warning_percent: parseInt(e.target.value) || 50 })}
+                      className="w-full bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white font-mono outline-none focus:border-amber-500/50"
+                    />
+                  </div>
+                  <div className="space-y-1.5 p-3 rounded-xl bg-rose-500/5 border border-rose-500/10">
+                    <label className="text-[9px] font-bold text-rose-500 uppercase tracking-tighter block">Critical</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={settings.threshold_critical_percent}
+                      onChange={(e) => setSettings({ ...settings, threshold_critical_percent: parseInt(e.target.value) || 75 })}
+                      className="w-full bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white font-mono outline-none focus:border-rose-500/50"
+                    />
+                  </div>
+                  <div className="space-y-1.5 p-3 rounded-xl bg-rose-600/10 border border-rose-600/20">
+                    <label className="text-[9px] font-bold text-rose-400 uppercase tracking-tighter block">Fatal</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={settings.threshold_fatal_percent}
+                      onChange={(e) => setSettings({ ...settings, threshold_fatal_percent: parseInt(e.target.value) || 90 })}
+                      className="w-full bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white font-mono outline-none focus:border-rose-500/50"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* NEW: AI Storage Trend Notification */}
+              <div className="space-y-4 pt-2">
+                <label className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/10 cursor-pointer hover:bg-white/[0.04] transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl border ${settings.storage_trend_enabled ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-white/5 text-neutral-500 border-white/5'}`}>
+                      <TrendingUp size={18} />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-white block">Storage Trend Notification</span>
+                      <span className="text-[11px] text-neutral-400 block">AI-driven projection for 48h threshold breaches</span>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.storage_trend_enabled}
+                    onChange={(e) => setSettings({ ...settings, storage_trend_enabled: e.target.checked })}
+                    className="accent-emerald-500 w-5 h-5 rounded cursor-pointer"
+                  />
+                </label>
+              </div>
+
+              {/* NEW: Alerts Log Section */}
+              <div className="space-y-3 pt-4 border-t border-white/5">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Capacity Alerts Log</p>
+                  <button onClick={fetchAlertLogs} className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors uppercase font-bold">Refresh</button>
+                </div>
+                <div className="bg-black/20 rounded-2xl border border-white/5 overflow-hidden">
+                  <div className="max-h-40 overflow-y-auto">
+                    {alertLogs.length > 0 ? (
+                      <table className="w-full text-left text-[10px]">
+                        <thead className="sticky top-0 bg-[#0a0a0a] border-b border-white/5 text-neutral-500 uppercase tracking-tighter">
+                          <tr>
+                            <th className="px-3 py-2">Date</th>
+                            <th className="px-3 py-2">Threshold</th>
+                            <th className="px-3 py-2 text-right">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {alertLogs.map((log) => (
+                            <tr key={log.id} className="hover:bg-white/[0.02]">
+                              <td className="px-3 py-2 text-neutral-400">{new Date(log.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                              <td className="px-3 py-2">
+                                <span className={`font-bold ${log.severity === 'FATAL' ? 'text-rose-500' : log.severity === 'CRITICAL' ? 'text-rose-400' : 'text-amber-400'}`}>
+                                  {log.severity} ({log.threshold_percent}%)
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    {log.notified_email && <Mail size={10} className="text-emerald-400" />}
+                                    {log.notified_system && <Activity size={10} className="text-indigo-400" />}
+                                  </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="py-8 text-center text-neutral-600 italic text-[11px]">
+                        No historical storage alerts logged.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+            <div className="pt-4 flex items-center justify-between border-t border-white/5">
+              <p className="text-[11px] text-neutral-500 max-w-[200px]">Triggers when total snapshots exceed {settings.storage_threshold_gb} GB.</p>
+              <button
+                onClick={handleSaveSettings}
+                disabled={saving}
+                className="bg-white text-black hover:bg-neutral-200 px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {saving ? <RefreshCw className="animate-spin" size={14} /> : savedSuccess ? <CheckCircle2 size={14} className="text-emerald-600" /> : <Bell size={14} />}
+                <span>{savedSuccess ? "Alerts Saved!" : "Save Alert Settings"}</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Snapshots History Table */}
@@ -1013,9 +1790,55 @@ export default function BackupsPage() {
                 <h2 className="text-xl font-bold">Local Storage Snapshots</h2>
                 <p className="text-xs text-neutral-500 mt-1">Stored database snapshot files available for download or recovery</p>
               </div>
-              <span className="text-xs font-bold text-neutral-500 uppercase tracking-widest">
-                {filteredSnapshots.length} of {snapshots.length} Snapshots
-              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleExportJSON}
+                  className="flex items-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+                  title="Export filtered snapshots as JSON for audit"
+                >
+                  <Download size={14} />
+                  <span>Export JSON</span>
+                </button>
+                <span className="text-xs font-bold text-neutral-500 uppercase tracking-widest">
+                  {filteredSnapshots.length} of {snapshots.length} Snapshots
+                </span>
+              </div>
+            </div>
+
+            {/* NEW: Triage Summary & Status Filters */}
+            <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-white/5">
+              <div className="flex items-center gap-3 pr-4 border-r border-white/10">
+                <div 
+                  onClick={() => setStatusFilter("completed")}
+                  className={`px-4 py-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${statusFilter === "completed" ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.04]'}`}
+                >
+                  <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                  <span className="text-[11px] font-bold text-white uppercase tracking-wider">Completed: {snapshots.filter(s => s.status === 'completed').length}</span>
+                </div>
+                <div 
+                  onClick={() => setStatusFilter("failed")}
+                  className={`px-4 py-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${statusFilter === "failed" ? 'bg-rose-500/10 border-rose-500/30' : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.04]'}`}
+                >
+                  <div className="w-2 h-2 rounded-full bg-rose-400"></div>
+                  <span className="text-[11px] font-bold text-white uppercase tracking-wider">Failed: {snapshots.filter(s => s.status === 'failed').length}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Quick Triage:</span>
+                <button
+                  onClick={() => setStatusFilter("all")}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${statusFilter === "all" ? 'bg-white text-black' : 'bg-white/5 text-neutral-400 hover:text-white'}`}
+                >
+                  Show All
+                </button>
+                <button
+                  onClick={() => setStatusFilter("failed")}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${statusFilter === "failed" ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20'}`}
+                >
+                  View Only Failed
+                </button>
+              </div>
             </div>
 
             {/* Filter controls bar */}
@@ -1126,6 +1949,7 @@ export default function BackupsPage() {
                   </th>
                   <th className="px-6 py-4 text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Snapshot Filename</th>
                   <th className="px-6 py-4 text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Metadata Tags</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Tier</th>
                   <th className="px-6 py-4 text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Frequency</th>
                   <th className="px-6 py-4 text-[10px] font-bold text-neutral-500 uppercase tracking-widest">File Size</th>
                   <th className="px-6 py-4 text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Status</th>
@@ -1187,6 +2011,15 @@ export default function BackupsPage() {
                             <Plus size={12} />
                           </button>
                         </div>
+                      </td>
+                      <td className="px-6 py-5 text-xs font-bold uppercase">
+                        <span className={`px-2.5 py-1 rounded-md border text-[9px] ${
+                          snap.storage_tier === 'archive' 
+                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
+                            : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                        }`}>
+                          {snap.storage_tier || 'standard'}
+                        </span>
                       </td>
                       <td className="px-6 py-5 text-xs font-bold uppercase">
                         <span className={`px-2.5 py-1 rounded-md border text-[9px] ${
@@ -1448,6 +2281,143 @@ export default function BackupsPage() {
                   >
                     <Download size={14} />
                     <span>Download Full File</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Global Retention Limits Modal */}
+        {isRetentionModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
+            <div className="bg-[#0f0f12] border border-white/10 rounded-[2.5rem] max-w-2xl w-full p-10 space-y-8 shadow-2xl animate-in zoom-in-95 duration-200">
+              <div className="flex items-start justify-between border-b border-white/5 pb-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-4 bg-indigo-500/10 text-indigo-400 rounded-[1.5rem] border border-indigo-500/20">
+                    <Sliders size={28} />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white tracking-tight">Global Retention Limits</h3>
+                    <p className="text-sm text-neutral-400">Define maximum file counts and storage volumes per frequency bucket.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsGlobalRetentionModalOpen(false)}
+                  className="text-neutral-500 hover:text-white p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-4 flex items-start gap-3 text-indigo-300 text-xs">
+                  <AlertCircle size={20} className="shrink-0 text-indigo-400" />
+                  <p className="leading-relaxed font-medium">
+                    When these limits are hit, the oldest snapshots in the specific tier will be automatically purged to maintain system health, regardless of the expiration days.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6">
+                  {bucketPolicies.map((bp, index) => (
+                    <div key={bp.bucket_type} className="p-6 rounded-3xl bg-white/[0.02] border border-white/5 space-y-6">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold uppercase tracking-[0.2em] text-emerald-400 flex items-center gap-2">
+                          <Database size={14} /> {bp.bucket_type} Tier
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Max Snapshot Count</label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="number"
+                              min="0"
+                              value={bp.max_count || ""}
+                              placeholder="Unlimited"
+                              onChange={(e) => {
+                                const next = [...bucketPolicies];
+                                next[index].max_count = parseInt(e.target.value) || 0;
+                                setBucketPolicies(next);
+                              }}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white font-mono outline-none focus:border-indigo-500/50"
+                            />
+                            <span className="text-[10px] font-bold text-neutral-500 uppercase">Files</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Max Cumulative Size</label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="number"
+                              min="0"
+                              value={bp.max_size_gb || ""}
+                              placeholder="Unlimited"
+                              onChange={(e) => {
+                                const next = [...bucketPolicies];
+                                next[index].max_size_gb = parseInt(e.target.value) || 0;
+                                setBucketPolicies(next);
+                              }}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white font-mono outline-none focus:border-indigo-500/50"
+                            />
+                            <span className="text-[10px] font-bold text-neutral-500 uppercase">GB</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Archive After</label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="number"
+                              min="0"
+                              value={bp.archive_after_days || ""}
+                              placeholder="Never"
+                              onChange={(e) => {
+                                const next = [...bucketPolicies];
+                                next[index].archive_after_days = parseInt(e.target.value) || 0;
+                                setBucketPolicies(next);
+                              }}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white font-mono outline-none focus:border-emerald-500/50"
+                            />
+                            <span className="text-[10px] font-bold text-neutral-500 uppercase">Days</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 border-t border-white/5 pt-8">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handlePruneSnapshots}
+                    disabled={pruning}
+                    className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all disabled:opacity-50"
+                  >
+                    {pruning ? <RefreshCw className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                    <span>Run Immediate Pruning</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => setIsGlobalRetentionModalOpen(false)}
+                    className="px-8 py-3 bg-white/5 hover:bg-white/10 text-neutral-300 rounded-2xl text-xs font-bold transition-all"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await handleSaveBucketPolicies();
+                      alert("Global retention limits saved successfully.");
+                      setIsGlobalRetentionModalOpen(false);
+                    }}
+                    disabled={savingBucketPolicies}
+                    className="px-10 py-3 bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl text-xs font-extrabold transition-all shadow-xl shadow-indigo-500/20 disabled:opacity-50"
+                  >
+                    {savingBucketPolicies ? "Saving..." : "Save Global Limits"}
                   </button>
                 </div>
               </div>

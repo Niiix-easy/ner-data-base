@@ -8,8 +8,10 @@
   },
   "dependencies": {
     "@types/d3": "^7.4.3",
+    "cron-parser": "^5.10.2",
     "d3": "^7.9.0",
     "jsqr": "^1.4.0",
+    "node-cron": "^4.6.0",
     "qrcode.react": "^4.2.0",
     "recharts": "^3.10.1"
   }

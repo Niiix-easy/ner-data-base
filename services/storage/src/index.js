@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const multer = require('multer');
 
 const app = express();
-const port = process.env.PORT || 3002;
+const port = process.env.STORAGE_PORT || process.env.PORT || 3002;
 
 app.use(express.json());
 

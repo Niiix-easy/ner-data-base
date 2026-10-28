@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const format = require('pg-format');
+const cronParser = require('cron-parser');
 
 const app = express();
 const port = process.env.CONTROL_PLANE_PORT || 3001;
@@ -135,6 +136,16 @@ app.use((req, res, next) => {
             sent_at DATE DEFAULT CURRENT_DATE
           );
 
+          CREATE TABLE IF NOT EXISTS public.backup_storage_alerts_log (
+            id SERIAL PRIMARY KEY,
+            severity VARCHAR(50),
+            threshold_percent INTEGER,
+            current_percent FLOAT,
+            notified_email BOOLEAN DEFAULT false,
+            notified_system BOOLEAN DEFAULT false,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
           CREATE TABLE IF NOT EXISTS public.database_snapshots (
             id SERIAL PRIMARY KEY,
             filename VARCHAR(255) NOT NULL,
@@ -142,17 +153,34 @@ app.use((req, res, next) => {
             frequency VARCHAR(50) DEFAULT 'daily',
             status VARCHAR(50) DEFAULT 'completed',
             retention_days INTEGER DEFAULT 7,
+            tags TEXT[] DEFAULT '{}',
+            storage_tier VARCHAR(50) DEFAULT 'standard',
+            is_locked BOOLEAN DEFAULT false,
+            duration_ms INTEGER DEFAULT 0,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
 
           CREATE TABLE IF NOT EXISTS public.backup_settings (
             id SERIAL PRIMARY KEY,
             frequency VARCHAR(50) DEFAULT 'daily',
+            cron_expression VARCHAR(255) DEFAULT '0 0 * * *',
             retention_days INTEGER DEFAULT 7,
             auto_backup_enabled BOOLEAN DEFAULT true,
             admin_notifications_enabled BOOLEAN DEFAULT true,
             db_latency_limit_ms INTEGER DEFAULT 100,
             redis_memory_limit_percent INTEGER DEFAULT 80,
+            storage_threshold_gb INTEGER DEFAULT 10,
+            storage_alerts_email_enabled BOOLEAN DEFAULT true,
+            storage_alerts_system_enabled BOOLEAN DEFAULT true,
+            storage_trend_enabled BOOLEAN DEFAULT false,
+            admin_contact_email VARCHAR(255),
+            off_peak_enabled BOOLEAN DEFAULT false,
+            off_peak_start VARCHAR(5) DEFAULT '00:00',
+            off_peak_end VARCHAR(5) DEFAULT '06:00',
+            threshold_warning_percent INTEGER DEFAULT 50,
+            threshold_critical_percent INTEGER DEFAULT 75,
+            threshold_fatal_percent INTEGER DEFAULT 90,
+            storage_alert_check_frequency VARCHAR(50) DEFAULT 'hourly',
             last_backup_at TIMESTAMP WITH TIME ZONE,
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
@@ -166,6 +194,9 @@ app.use((req, res, next) => {
             bucket_type VARCHAR(50) UNIQUE NOT NULL,
             retention_days INTEGER NOT NULL,
             auto_prune_enabled BOOLEAN DEFAULT true,
+            max_count INTEGER,
+            max_size_gb INTEGER,
+            archive_after_days INTEGER,
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
 
@@ -235,6 +266,97 @@ app.use((req, res, next) => {
         if (!backupSettingsColumns.includes('admin_notifications_enabled')) {
           await client.query('ALTER TABLE public.backup_settings ADD COLUMN admin_notifications_enabled BOOLEAN DEFAULT true');
         }
+        if (!backupSettingsColumns.includes('storage_threshold_gb')) {
+          await client.query('ALTER TABLE public.backup_settings ADD COLUMN storage_threshold_gb INTEGER DEFAULT 10');
+        }
+        if (!backupSettingsColumns.includes('storage_alerts_email_enabled')) {
+          await client.query('ALTER TABLE public.backup_settings ADD COLUMN storage_alerts_email_enabled BOOLEAN DEFAULT true');
+        }
+        if (!backupSettingsColumns.includes('storage_alerts_system_enabled')) {
+          await client.query('ALTER TABLE public.backup_settings ADD COLUMN storage_alerts_system_enabled BOOLEAN DEFAULT true');
+        }
+        if (!backupSettingsColumns.includes('storage_trend_enabled')) {
+          await client.query('ALTER TABLE public.backup_settings ADD COLUMN storage_trend_enabled BOOLEAN DEFAULT false');
+        }
+        if (!backupSettingsColumns.includes('off_peak_enabled')) {
+          await client.query('ALTER TABLE public.backup_settings ADD COLUMN off_peak_enabled BOOLEAN DEFAULT false');
+        }
+        if (!backupSettingsColumns.includes('off_peak_start')) {
+          await client.query("ALTER TABLE public.backup_settings ADD COLUMN off_peak_start VARCHAR(5) DEFAULT '00:00'");
+        }
+        if (!backupSettingsColumns.includes('off_peak_end')) {
+          await client.query("ALTER TABLE public.backup_settings ADD COLUMN off_peak_end VARCHAR(5) DEFAULT '06:00'");
+        }
+        if (!backupSettingsColumns.includes('admin_contact_email')) {
+          await client.query("ALTER TABLE public.backup_settings ADD COLUMN admin_contact_email VARCHAR(255)");
+        }
+        if (!backupSettingsColumns.includes('cron_expression')) {
+          await client.query("ALTER TABLE public.backup_settings ADD COLUMN cron_expression VARCHAR(255) DEFAULT '0 0 * * *'");
+        }
+
+        const snapshotTableInfo = await client.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'database_snapshots'
+        `);
+        const snapshotColumns = snapshotTableInfo.rows.map(r => r.column_name);
+        if (!snapshotColumns.includes('tags')) {
+          await client.query("ALTER TABLE public.database_snapshots ADD COLUMN tags TEXT[] DEFAULT '{}'");
+        }
+
+        const bucketPolicyTableInfo = await client.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'backup_bucket_policies'
+        `);
+        const bucketPolicyColumns = bucketPolicyTableInfo.rows.map(r => r.column_name);
+        if (!bucketPolicyColumns.includes('max_count')) {
+          await client.query('ALTER TABLE public.backup_bucket_policies ADD COLUMN max_count INTEGER');
+        }
+        if (!bucketPolicyColumns.includes('max_size_gb')) {
+          await client.query('ALTER TABLE public.backup_bucket_policies ADD COLUMN max_size_gb INTEGER');
+        }
+        if (!bucketPolicyColumns.includes('archive_after_days')) {
+          await client.query('ALTER TABLE public.backup_bucket_policies ADD COLUMN archive_after_days INTEGER');
+        }
+
+        const snapshotTableInfo = await client.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'database_snapshots'
+        `);
+        const snapshotColumns = snapshotTableInfo.rows.map(r => r.column_name);
+        if (!snapshotColumns.includes('tags')) {
+          await client.query("ALTER TABLE public.database_snapshots ADD COLUMN tags TEXT[] DEFAULT '{}'");
+        }
+        if (!snapshotColumns.includes('storage_tier')) {
+          await client.query("ALTER TABLE public.database_snapshots ADD COLUMN storage_tier VARCHAR(50) DEFAULT 'standard'");
+        }
+        if (!snapshotColumns.includes('is_locked')) {
+          await client.query("ALTER TABLE public.database_snapshots ADD COLUMN is_locked BOOLEAN DEFAULT false");
+        }
+        if (!snapshotColumns.includes('duration_ms')) {
+          await client.query("ALTER TABLE public.database_snapshots ADD COLUMN duration_ms INTEGER DEFAULT 0");
+        }
+
+        const bsTableInfo = await client.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'backup_settings'
+        `);
+        const bsColumns = bsTableInfo.rows.map(r => r.column_name);
+        if (!bsColumns.includes('threshold_warning_percent')) {
+          await client.query('ALTER TABLE public.backup_settings ADD COLUMN threshold_warning_percent INTEGER DEFAULT 50');
+        }
+        if (!bsColumns.includes('threshold_critical_percent')) {
+          await client.query('ALTER TABLE public.backup_settings ADD COLUMN threshold_critical_percent INTEGER DEFAULT 75');
+        }
+        if (!bsColumns.includes('threshold_fatal_percent')) {
+          await client.query('ALTER TABLE public.backup_settings ADD COLUMN threshold_fatal_percent INTEGER DEFAULT 90');
+        }
+        if (!bsColumns.includes('storage_alert_check_frequency')) {
+          await client.query("ALTER TABLE public.backup_settings ADD COLUMN storage_alert_check_frequency VARCHAR(50) DEFAULT 'hourly'");
+        }
 
         console.log('System tables initialized successfully');
       } finally {
@@ -248,12 +370,23 @@ app.use((req, res, next) => {
 
   const sendEmailNotification = async (userId, subject, message) => {
     try {
-      let email = process.env.STUDIO_ADMIN_EMAIL; // Fallback
-      if (userId) {
+      let email = null;
+      
+      // Fetch settings to check for custom admin email
+      const bSettings = await pool.query('SELECT admin_contact_email FROM public.backup_settings ORDER BY id ASC LIMIT 1');
+      if (bSettings.rowCount > 0 && bSettings.rows[0].admin_contact_email) {
+        email = bSettings.rows[0].admin_contact_email;
+      }
+
+      if (!email && userId) {
         const userRes = await pool.query('SELECT email FROM public.users WHERE id = $1', [userId]);
         if (userRes.rowCount > 0) {
           email = userRes.rows[0].email;
         }
+      }
+      
+      if (!email) {
+        email = process.env.STUDIO_ADMIN_EMAIL; // Final fallback
       }
 
       if (!email) {
@@ -409,12 +542,48 @@ Message: ${message}
         await logActivity(key.id, 'ROTATED', { reason: 'Auto-rotation', name: key.name });
         await sendEmailNotification(
           key.user_id,
-          `API Key Auto-Rotated: ${key.name}`,
           `Sua chave de API "${key.name}" no Ner-Data-Base foi rotacionada automaticamente como configurado. O valor antigo é agora inválido. Por favor, atualize suas credenciais.`
         );
       }
 
-      // 4. Daily Usage Limit Notification
+      // 4. Storage Capacity Severity Checks
+      const bSettingsRes = await pool.query('SELECT * FROM public.backup_settings ORDER BY id ASC LIMIT 1');
+      if (bSettingsRes.rowCount > 0) {
+        const settings = bSettingsRes.rows[0];
+        const storageThresholdBytes = (settings.storage_threshold_gb || 10) * 1024 * 1024 * 1024;
+        
+        const currentRes = await pool.query("SELECT COALESCE(SUM(size_bytes), 0) as total_bytes FROM public.database_snapshots WHERE status = 'completed'");
+        const currentBytes = parseInt(currentRes.rows[0].total_bytes);
+        const currentPercent = (currentBytes / storageThresholdBytes) * 100;
+
+        const checkAndNotify = async (severity, threshold) => {
+          if (currentPercent >= threshold) {
+            const checkAlert = await pool.query(
+              'SELECT 1 FROM public.backup_storage_alerts_log WHERE threshold_percent = $1 AND created_at > CURRENT_TIMESTAMP - INTERVAL \'1 day\'', 
+              [threshold]
+            );
+            if (checkAlert.rowCount === 0) {
+              await sendEmailNotification(
+                null,
+                `[${severity}] Storage Capacity Alert: ${threshold}% Reached`,
+                `The database backup storage has reached ${currentPercent.toFixed(1)}% of the ${settings.storage_threshold_gb} GB limit. Severity Level: ${severity}.`
+              );
+              await pool.query(
+                'INSERT INTO public.backup_storage_alerts_log (severity, threshold_percent, current_percent, notified_email, notified_system) VALUES ($1, $2, $3, $4, $5)', 
+                [severity, threshold, currentPercent, settings.storage_alerts_email_enabled, settings.storage_alerts_system_enabled]
+              );
+            }
+          }
+        };
+
+        if (settings.storage_alerts_system_enabled || settings.storage_alerts_email_enabled) {
+          await checkAndNotify('FATAL', settings.threshold_fatal_percent || 90);
+          await checkAndNotify('CRITICAL', settings.threshold_critical_percent || 75);
+          await checkAndNotify('WARNING', settings.threshold_warning_percent || 50);
+        }
+      }
+
+      // 5. Daily Usage Limit Notification
       const keysWithLimit = await pool.query(`
           SELECT k.*, COUNT(l.id) as daily_usage
           FROM public.api_keys k
@@ -449,50 +618,58 @@ Message: ${message}
       if (backupSettingsRes.rowCount > 0) {
         const bSettings = backupSettingsRes.rows[0];
         if (bSettings.auto_backup_enabled) {
-          const lastBackup = bSettings.last_backup_at ? new Date(bSettings.last_backup_at).getTime() : 0;
-          const intervalMs = bSettings.frequency === 'weekly' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
           const now = Date.now();
-
-          if (now - lastBackup > intervalMs) {
-            console.log(`[Backup Job] Scheduled ${bSettings.frequency} backup execution due...`);
+          const lastBackup = bSettings.last_backup_at ? new Date(bSettings.last_backup_at).getTime() : 0;
+          
+          let shouldRun = false;
+          if (bSettings.cron_expression) {
             try {
+              const interval = cronParser.parseExpression(bSettings.cron_expression);
+              const prev = interval.prev().getTime();
+              // If the previous scheduled time was AFTER our last backup, and it's BEFORE or EQUAL to now, we should run.
+              shouldRun = prev > lastBackup && prev <= now;
+            } catch (err) {
+              console.error('[Backup Job] Invalid cron expression fallback to interval:', bSettings.cron_expression);
+              const intervalMs = bSettings.frequency === 'weekly' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+              shouldRun = now - lastBackup > intervalMs;
+            }
+          } else {
+            const intervalMs = bSettings.frequency === 'weekly' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+            shouldRun = now - lastBackup > intervalMs;
+          }
+
+          if (shouldRun) {
+            // Respect Off-peak Hours if enabled
+            if (bSettings.off_peak_enabled) {
+              const nowTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+              const start = bSettings.off_peak_start || '00:00';
+              const end = bSettings.off_peak_end || '06:00';
+              const isInWindow = start <= end 
+                ? (nowTime >= start && nowTime <= end)
+                : (nowTime >= start || nowTime <= end);
+              
+              if (!isInWindow) {
+                console.log(`[Backup Job] Deferring scheduled backup: current time ${nowTime} is outside off-peak window ${start}-${end}.`);
+                continue;
+              }
+            }
+
+            console.log(`[Backup Job] Scheduled ${bSettings.frequency} backup execution due...`);
+              const startTime = Date.now();
               const ts = new Date().toISOString().replace(/[:.]/g, '-');
               const fname = `db_snapshot_${ts}.sql.gz`;
               const sz = Math.floor(Math.random() * 5000000) + 10000000;
+              const duration = Math.floor(Math.random() * 2000) + 1000; // Simulate 1-3s
 
               await pool.query(
-                'INSERT INTO public.database_snapshots (filename, size_bytes, frequency, status, retention_days) VALUES ($1, $2, $3, $4, $5)',
-                [fname, sz, bSettings.frequency, 'completed', bSettings.retention_days || 7]
+                'INSERT INTO public.database_snapshots (filename, size_bytes, frequency, status, retention_days, duration_ms) VALUES ($1, $2, $3, $4, $5, $6)',
+                [fname, sz, bSettings.frequency, 'completed', bSettings.retention_days || 7, duration]
               );
               await pool.query('UPDATE public.backup_settings SET last_backup_at = CURRENT_TIMESTAMP');
               console.log(`[Backup Job] Scheduled backup completed successfully: ${fname}`);
 
-              // Enforce Bucket-Specific Retention Policies: Purge snapshots older than configured thresholds
-              const bucketPoliciesRes = await pool.query('SELECT * FROM public.backup_bucket_policies WHERE auto_prune_enabled = true');
-              for (const pol of bucketPoliciesRes.rows) {
-                const purgeRes = await pool.query(
-                  `DELETE FROM public.database_snapshots 
-                   WHERE LOWER(frequency) = LOWER($1) 
-                   AND created_at < CURRENT_TIMESTAMP - ($2 || ' days')::INTERVAL 
-                   RETURNING filename`,
-                  [pol.bucket_type, pol.retention_days]
-                );
-                if (purgeRes.rowCount > 0) {
-                  console.log(`[Bucket Pruning] Purged ${purgeRes.rowCount} snapshot(s) from ${pol.bucket_type} bucket older than ${pol.retention_days} days.`);
-                }
-              }
-
-              // Also enforce default retention policy
-              const retentionDays = bSettings.retention_days || 7;
-              const purgeRes = await pool.query(
-                `DELETE FROM public.database_snapshots 
-                 WHERE created_at < CURRENT_TIMESTAMP - ($1 || ' days')::INTERVAL 
-                 RETURNING filename`,
-                [retentionDays]
-              );
-              if (purgeRes.rowCount > 0) {
-                console.log(`[Retention Policy] Purged ${purgeRes.rowCount} snapshot(s) older than ${retentionDays} days.`);
-              }
+              // Trigger Pruning & Lifecycle
+              await executePruning();
             } catch (backupErr) {
               console.error('[Backup Job Error] Scheduled backup failed:', backupErr);
               const ts = new Date().toISOString().replace(/[:.]/g, '-');
@@ -1373,14 +1550,49 @@ app.get('/health', async (req, res) => {
 app.get('/backups/settings', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM public.backup_settings ORDER BY id ASC LIMIT 1');
-    res.json(result.rows[0] || { frequency: 'daily', retention_days: 7, auto_backup_enabled: true, admin_notifications_enabled: true, db_latency_limit_ms: 100, redis_memory_limit_percent: 80 });
+    res.json(result.rows[0] || { 
+      frequency: 'daily', 
+      cron_expression: '0 0 * * *',
+      retention_days: 7, 
+      auto_backup_enabled: true, 
+      admin_notifications_enabled: true, 
+      db_latency_limit_ms: 100, 
+      redis_memory_limit_percent: 80,
+      storage_trend_enabled: false,
+      admin_contact_email: '',
+      off_peak_enabled: false,
+      off_peak_start: '00:00',
+      off_peak_end: '06:00',
+      threshold_warning_percent: 50,
+      threshold_critical_percent: 75,
+      threshold_fatal_percent: 90
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.put('/backups/settings', async (req, res) => {
-  const { frequency, retentionDays, autoBackupEnabled, adminNotificationsEnabled, dbLatencyLimitMs, redisMemoryLimitPercent } = req.body;
+  const { 
+    frequency, 
+    cronExpression,
+    retentionDays, 
+    autoBackupEnabled, 
+    adminNotificationsEnabled, 
+    dbLatencyLimitMs, 
+    redisMemoryLimitPercent,
+    storageThresholdGb,
+    storageAlertsEmailEnabled,
+    storageAlertsSystemEnabled,
+    storageTrendEnabled,
+    adminContactEmail,
+    offPeakEnabled,
+    offPeakStart,
+    offPeakEnd,
+    thresholdWarningPercent,
+    thresholdCriticalPercent,
+    thresholdFatalPercent
+  } = req.body;
   try {
     const result = await pool.query(
       `UPDATE public.backup_settings 
@@ -1390,7 +1602,20 @@ app.put('/backups/settings', async (req, res) => {
            admin_notifications_enabled = $4,
            db_latency_limit_ms = COALESCE($5, db_latency_limit_ms),
            redis_memory_limit_percent = COALESCE($6, redis_memory_limit_percent),
-           updated_at = CURRENT_TIMESTAMP 
+           storage_threshold_gb = COALESCE($7, storage_threshold_gb),
+           storage_alerts_email_enabled = COALESCE($8, storage_alerts_email_enabled),
+           storage_alerts_system_enabled = COALESCE($9, storage_alerts_system_enabled),
+           storage_trend_enabled = COALESCE($10, storage_trend_enabled),
+           admin_contact_email = COALESCE($11, admin_contact_email),
+           off_peak_enabled = COALESCE($12, off_peak_enabled),
+           off_peak_start = COALESCE($13, off_peak_start),
+           off_peak_end = COALESCE($14, off_peak_end),
+           cron_expression = COALESCE($15, cron_expression),
+           threshold_warning_percent = COALESCE($16, threshold_warning_percent),
+           threshold_critical_percent = COALESCE($17, threshold_critical_percent),
+           threshold_fatal_percent = COALESCE($18, threshold_fatal_percent),
+           storage_alert_check_frequency = COALESCE($19, storage_alert_check_frequency),
+            updated_at = CURRENT_TIMESTAMP 
        WHERE id = (SELECT id FROM public.backup_settings ORDER BY id ASC LIMIT 1) 
        RETURNING *`,
       [
@@ -1399,7 +1624,20 @@ app.put('/backups/settings', async (req, res) => {
         autoBackupEnabled !== undefined ? autoBackupEnabled : true,
         adminNotificationsEnabled !== undefined ? adminNotificationsEnabled : true,
         dbLatencyLimitMs || null,
-        redisMemoryLimitPercent || null
+        redisMemoryLimitPercent || null,
+        storageThresholdGb || null,
+        storageAlertsEmailEnabled !== undefined ? storageAlertsEmailEnabled : true,
+        storageAlertsSystemEnabled !== undefined ? storageAlertsSystemEnabled : true,
+        storageTrendEnabled !== undefined ? storageTrendEnabled : false,
+        adminContactEmail || null,
+        offPeakEnabled !== undefined ? offPeakEnabled : false,
+        offPeakStart || '00:00',
+        offPeakEnd || '06:00',
+        cronExpression || null,
+        thresholdWarningPercent || null,
+        thresholdCriticalPercent || null,
+        thresholdFatalPercent || null,
+        storageAlertCheckFrequency || 'hourly'
       ]
     );
     res.json(result.rows[0]);
@@ -1423,10 +1661,11 @@ app.post('/backups/snapshots', async (req, res) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `db_snapshot_${timestamp}.sql.gz`;
     const sizeBytes = Math.floor(Math.random() * 5000000) + 10000000;
+    const duration = Math.floor(Math.random() * 2000) + 1000;
 
     const result = await pool.query(
-      'INSERT INTO public.database_snapshots (filename, size_bytes, frequency, status) VALUES ($1, $2, $3, $4) RETURNING *',
-      [filename, sizeBytes, frequency || 'manual', 'completed']
+      'INSERT INTO public.database_snapshots (filename, size_bytes, frequency, status, duration_ms) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [filename, sizeBytes, frequency || 'manual', 'completed', duration]
     );
 
     await pool.query('UPDATE public.backup_settings SET last_backup_at = CURRENT_TIMESTAMP');
@@ -1437,8 +1676,52 @@ app.post('/backups/snapshots', async (req, res) => {
   }
 });
 
+app.put('/backups/snapshots/:id/tags', async (req, res) => {
+  const { tags } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE public.database_snapshots SET tags = $1 WHERE id = $2 RETURNING *',
+      [tags || [], req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/backups/snapshots/:id/rename', async (req, res) => {
+  const { filename } = req.body;
+  if (!filename) return res.status(400).json({ error: 'Filename is required' });
+  try {
+    const result = await pool.query(
+      'UPDATE public.database_snapshots SET filename = $1 WHERE id = $2 RETURNING *',
+      [filename, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/backups/snapshots/:id/lock', async (req, res) => {
+  const { isLocked } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE public.database_snapshots SET is_locked = $1 WHERE id = $2 RETURNING *',
+      [isLocked, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/backups/snapshots/:id', async (req, res) => {
   try {
+    const check = await pool.query('SELECT is_locked FROM public.database_snapshots WHERE id = $1', [req.params.id]);
+    if (check.rowCount > 0 && check.rows[0].is_locked) {
+      return res.status(403).json({ error: 'Snapshot is locked and cannot be deleted' });
+    }
     await pool.query('DELETE FROM public.database_snapshots WHERE id = $1', [req.params.id]);
     res.json({ message: 'Snapshot deleted' });
   } catch (err) {
@@ -1582,11 +1865,24 @@ app.put('/backups/bucket-policies', async (req, res) => {
     if (Array.isArray(policies)) {
       for (const policy of policies) {
         await pool.query(
-          `INSERT INTO public.backup_bucket_policies (bucket_type, retention_days, auto_prune_enabled)
-           VALUES ($1, $2, $3)
+          `INSERT INTO public.backup_bucket_policies (bucket_type, retention_days, auto_prune_enabled, max_count, max_size_gb, archive_after_days)
+           VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (bucket_type) 
-           DO UPDATE SET retention_days = EXCLUDED.retention_days, auto_prune_enabled = EXCLUDED.auto_prune_enabled, updated_at = CURRENT_TIMESTAMP`,
-          [policy.bucket_type, policy.retention_days, policy.auto_prune_enabled !== undefined ? policy.auto_prune_enabled : true]
+           DO UPDATE SET 
+            retention_days = EXCLUDED.retention_days, 
+            auto_prune_enabled = EXCLUDED.auto_prune_enabled,
+            max_count = EXCLUDED.max_count,
+            max_size_gb = EXCLUDED.max_size_gb,
+            archive_after_days = EXCLUDED.archive_after_days,
+            updated_at = CURRENT_TIMESTAMP`,
+          [
+            policy.bucket_type, 
+            policy.retention_days, 
+            policy.auto_prune_enabled !== undefined ? policy.auto_prune_enabled : true,
+            policy.max_count || null,
+            policy.max_size_gb || null,
+            policy.archive_after_days || null
+          ]
         );
       }
     }
@@ -1597,32 +1893,120 @@ app.put('/backups/bucket-policies', async (req, res) => {
   }
 });
 
-app.post('/backups/prune', async (req, res) => {
+const executePruning = async () => {
   try {
     let prunedCount = 0;
     const bucketPoliciesRes = await pool.query('SELECT * FROM public.backup_bucket_policies WHERE auto_prune_enabled = true');
+    
     for (const pol of bucketPoliciesRes.rows) {
-      const purgeRes = await pool.query(
+      // 1. Time-based pruning
+      const timePurgeRes = await pool.query(
         `DELETE FROM public.database_snapshots 
          WHERE LOWER(frequency) = LOWER($1) 
          AND created_at < CURRENT_TIMESTAMP - ($2 || ' days')::INTERVAL 
-         RETURNING filename`,
+         AND is_locked = false
+         RETURNING id`,
         [pol.bucket_type, pol.retention_days]
       );
-      prunedCount += purgeRes.rowCount;
+      prunedCount += timePurgeRes.rowCount;
+
+      // 2. Max count pruning
+      if (pol.max_count > 0) {
+        const countPurgeRes = await pool.query(
+          `DELETE FROM public.database_snapshots
+           WHERE id IN (
+             SELECT id FROM public.database_snapshots
+             WHERE LOWER(frequency) = LOWER($1)
+             AND is_locked = false
+             ORDER BY created_at DESC
+             OFFSET $2
+           )
+           RETURNING id`,
+          [pol.bucket_type, pol.max_count]
+        );
+        prunedCount += countPurgeRes.rowCount;
+      }
+
+      // 3. Max size pruning
+      if (pol.max_size_gb > 0) {
+        const maxSizeRows = await pool.query(
+          `SELECT id, size_bytes FROM public.database_snapshots
+           WHERE LOWER(frequency) = LOWER($1)
+           AND is_locked = false
+           ORDER BY created_at DESC`,
+          [pol.bucket_type]
+        );
+        
+        let cumulativeSize = 0;
+        const idsToDelete = [];
+        const limitBytes = pol.max_size_gb * 1024 * 1024 * 1024;
+        
+        for (const row of maxSizeRows.rows) {
+          cumulativeSize += parseInt(row.size_bytes);
+          if (cumulativeSize > limitBytes) {
+            idsToDelete.push(row.id);
+          }
+        }
+
+        if (idsToDelete.length > 0) {
+          const sizePurgeRes = await pool.query(
+            'DELETE FROM public.database_snapshots WHERE id = ANY($1) RETURNING id',
+            [idsToDelete]
+          );
+          prunedCount += sizePurgeRes.rowCount;
+        }
+      }
     }
 
+    // Default retention pruning
     const bSettings = await pool.query('SELECT retention_days FROM public.backup_settings LIMIT 1');
     const defaultRetention = bSettings.rows[0]?.retention_days || 7;
     const defaultPurgeRes = await pool.query(
       `DELETE FROM public.database_snapshots 
        WHERE created_at < CURRENT_TIMESTAMP - ($1 || ' days')::INTERVAL 
-       RETURNING filename`,
+       AND is_locked = false
+       RETURNING id`,
       [defaultRetention]
     );
     prunedCount += defaultPurgeRes.rowCount;
 
+    // 4. Lifecycle Policies: Move to Archive
+    const lifecycleRes = await pool.query('SELECT * FROM public.backup_bucket_policies WHERE archive_after_days IS NOT NULL');
+    for (const pol of lifecycleRes.rows) {
+      const moveRes = await pool.query(
+        `UPDATE public.database_snapshots 
+         SET storage_tier = 'archive' 
+         WHERE LOWER(frequency) = LOWER($1) 
+         AND created_at < CURRENT_TIMESTAMP - ($2 || ' days')::INTERVAL 
+         AND storage_tier != 'archive'
+         RETURNING filename`,
+        [pol.bucket_type, pol.archive_after_days]
+      );
+      if (moveRes.rowCount > 0) {
+        console.log(`[Lifecycle Policy] Moved ${moveRes.rowCount} snapshot(s) from ${pol.bucket_type} bucket to archive tier.`);
+      }
+    }
+
+    return prunedCount;
+  } catch (err) {
+    console.error('Error executing pruning:', err);
+    throw err;
+  }
+};
+
+app.post('/backups/prune', async (req, res) => {
+  try {
+    const prunedCount = await executePruning();
     res.json({ message: 'Backup snapshot pruning executed successfully', prunedCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/backups/alerts-log', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM public.backup_storage_alerts_log ORDER BY created_at DESC LIMIT 50');
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

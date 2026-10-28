@@ -1,0 +1,7 @@
+{
+  "name": "NER Data Base - Backup Management Dashboard",
+  "description": "A comprehensive backup management dashboard for monitoring success rates, storage consumption, and retention policies across database snapshots.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
