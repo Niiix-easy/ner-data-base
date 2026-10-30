@@ -375,6 +375,9 @@ export default function BackupsPage() {
   };
 
   const handlePruneSnapshots = async () => {
+    if (!confirm("Are you sure you want to trigger the immediate pruning process? This will remove snapshots violating retention rules and cannot be undone.")) {
+      return;
+    }
     setPruning(true);
     try {
       const res = await fetch("/api/control-plane/backups/prune", {
@@ -1103,15 +1106,31 @@ export default function BackupsPage() {
         </div>
 
         {/* Real-time Summary Card Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 flex items-center gap-5 shadow-xl">
+            <div className="relative w-16 h-16 shrink-0">
+              <svg className="w-full h-full -rotate-90">
+                <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
+                <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={`${summary ? summary.success_rate * 1.76 : 176} 176`} className="text-emerald-500" strokeLinecap="round" />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center font-bold text-xs text-white">
+                {summary ? `${summary.success_rate}%` : "100%"}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Success Rate</p>
+              <p className="text-[11px] text-neutral-500 mt-1">{snapshots.filter(s => s.status === 'completed').length} / {snapshots.length} completed</p>
+            </div>
+          </div>
+
           <div className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 flex items-center gap-5 shadow-xl">
             <div className="p-4 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <CheckCircle2 size={28} />
             </div>
             <div>
-              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Backup Success Rate</p>
-              <p className="text-3xl font-extrabold text-white mt-1">{summary ? `${summary.success_rate}%` : "100.0%"}</p>
-              <p className="text-[11px] text-neutral-500 mt-1">{snapshots.filter(s => s.status === 'completed').length} of {snapshots.length} completed</p>
+              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Backup Success</p>
+              <p className="text-3xl font-extrabold text-white mt-1">{snapshots.filter(s => s.status === 'completed').length}</p>
+              <p className="text-[11px] text-neutral-500 mt-1">successful snapshots</p>
             </div>
           </div>
 
@@ -1120,9 +1139,9 @@ export default function BackupsPage() {
               <HardDrive size={28} />
             </div>
             <div>
-              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Total Storage Consumed</p>
+              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Total Storage</p>
               <p className="text-3xl font-extrabold text-white mt-1">{summary ? formatSize(summary.total_storage_bytes) : "0 B"}</p>
-              <p className="text-[11px] text-neutral-500 mt-1">{snapshots.length} total snapshot file(s)</p>
+              <p className="text-[11px] text-neutral-500 mt-1">{snapshots.length} total file(s)</p>
             </div>
           </div>
 
@@ -1131,7 +1150,7 @@ export default function BackupsPage() {
               <Calendar size={28} />
             </div>
             <div>
-              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Next Scheduled Backup</p>
+              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Next Backup</p>
               <p className="text-sm font-bold text-white mt-1 truncate max-w-[200px]">
                 {summary?.next_scheduled_backup_at ? new Date(summary.next_scheduled_backup_at).toLocaleString() : "In 24 hours"}
               </p>
