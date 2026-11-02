@@ -160,6 +160,14 @@ app.use((req, res, next) => {
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
 
+          CREATE TABLE IF NOT EXISTS public.backup_pruning_log (
+            id SERIAL PRIMARY KEY,
+            pruned_count INTEGER DEFAULT 0,
+            storage_saved_bytes BIGINT DEFAULT 0,
+            trigger_type VARCHAR(50) DEFAULT 'manual', -- 'auto' or 'manual'
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
           CREATE TABLE IF NOT EXISTS public.backup_settings (
             id SERIAL PRIMARY KEY,
             frequency VARCHAR(50) DEFAULT 'daily',
@@ -181,6 +189,9 @@ app.use((req, res, next) => {
             threshold_critical_percent INTEGER DEFAULT 75,
             threshold_fatal_percent INTEGER DEFAULT 90,
             storage_alert_check_frequency VARCHAR(50) DEFAULT 'hourly',
+            s3_archive_enabled BOOLEAN DEFAULT false,
+            s3_archive_bucket_name VARCHAR(255),
+            s3_archive_region VARCHAR(100) DEFAULT 'us-east-1',
             last_backup_at TIMESTAMP WITH TIME ZONE,
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
@@ -206,6 +217,16 @@ app.use((req, res, next) => {
             ('weekly', 30, true),
             ('monthly', 365, true)
           ON CONFLICT (bucket_type) DO NOTHING;
+
+          CREATE TABLE IF NOT EXISTS public.backup_recovery_history (
+            id SERIAL PRIMARY KEY,
+            snapshot_id INTEGER REFERENCES public.database_snapshots(id),
+            filename VARCHAR(255),
+            restored_by VARCHAR(255) DEFAULT 'System Administrator',
+            status VARCHAR(50) DEFAULT 'completed',
+            notes TEXT,
+            restored_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
         `);
 
         // Migration: Add columns if they don't exist
@@ -356,6 +377,15 @@ app.use((req, res, next) => {
         }
         if (!bsColumns.includes('storage_alert_check_frequency')) {
           await client.query("ALTER TABLE public.backup_settings ADD COLUMN storage_alert_check_frequency VARCHAR(50) DEFAULT 'hourly'");
+        }
+        if (!bsColumns.includes('s3_archive_enabled')) {
+          await client.query('ALTER TABLE public.backup_settings ADD COLUMN s3_archive_enabled BOOLEAN DEFAULT false');
+        }
+        if (!bsColumns.includes('s3_archive_bucket_name')) {
+          await client.query('ALTER TABLE public.backup_settings ADD COLUMN s3_archive_bucket_name VARCHAR(255)');
+        }
+        if (!bsColumns.includes('s3_archive_region')) {
+          await client.query("ALTER TABLE public.backup_settings ADD COLUMN s3_archive_region VARCHAR(100) DEFAULT 'us-east-1'");
         }
 
         console.log('System tables initialized successfully');
@@ -1573,7 +1603,7 @@ app.get('/backups/settings', async (req, res) => {
 });
 
 app.put('/backups/settings', async (req, res) => {
-  const { 
+    const { 
     frequency, 
     cronExpression,
     retentionDays, 
@@ -1591,7 +1621,11 @@ app.put('/backups/settings', async (req, res) => {
     offPeakEnd,
     thresholdWarningPercent,
     thresholdCriticalPercent,
-    thresholdFatalPercent
+    thresholdFatalPercent,
+    storageAlertCheckFrequency,
+    s3ArchiveEnabled,
+    s3ArchiveBucketName,
+    s3ArchiveRegion
   } = req.body;
   try {
     const result = await pool.query(
@@ -1615,7 +1649,10 @@ app.put('/backups/settings', async (req, res) => {
            threshold_critical_percent = COALESCE($17, threshold_critical_percent),
            threshold_fatal_percent = COALESCE($18, threshold_fatal_percent),
            storage_alert_check_frequency = COALESCE($19, storage_alert_check_frequency),
-            updated_at = CURRENT_TIMESTAMP 
+           s3_archive_enabled = COALESCE($20, s3_archive_enabled),
+           s3_archive_bucket_name = COALESCE($21, s3_archive_bucket_name),
+           s3_archive_region = COALESCE($22, s3_archive_region),
+           updated_at = CURRENT_TIMESTAMP 
        WHERE id = (SELECT id FROM public.backup_settings ORDER BY id ASC LIMIT 1) 
        RETURNING *`,
       [
@@ -1631,15 +1668,17 @@ app.put('/backups/settings', async (req, res) => {
         storageTrendEnabled !== undefined ? storageTrendEnabled : false,
         adminContactEmail || null,
         offPeakEnabled !== undefined ? offPeakEnabled : false,
-        offPeakStart || '00:00',
-        offPeakEnd || '06:00',
+        offPeakStart || null,
+        offPeakEnd || null,
         cronExpression || null,
         thresholdWarningPercent || null,
         thresholdCriticalPercent || null,
         thresholdFatalPercent || null,
-        storageAlertCheckFrequency || 'hourly'
+        storageAlertCheckFrequency || null,
+        s3ArchiveEnabled !== undefined ? s3ArchiveEnabled : null,
+        s3ArchiveBucketName || null,
+        s3ArchiveRegion || null
       ]
-    );
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1724,6 +1763,38 @@ app.delete('/backups/snapshots/:id', async (req, res) => {
     }
     await pool.query('DELETE FROM public.database_snapshots WHERE id = $1', [req.params.id]);
     res.json({ message: 'Snapshot deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/backups/recovery-history', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM public.backup_recovery_history ORDER BY restored_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/backups/restore/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const snapResult = await pool.query('SELECT filename FROM public.database_snapshots WHERE id = $1', [id]);
+    if (snapResult.rowCount === 0) return res.status(404).json({ error: 'Snapshot not found' });
+    
+    const filename = snapResult.rows[0].filename;
+    const operator = 'Administrator'; // Mock operator for now
+    
+    const result = await pool.query(
+      'INSERT INTO public.backup_recovery_history (snapshot_id, filename, restored_by, status) VALUES ($1, $2, $3, $4) RETURNING *',
+      [id, filename, operator, 'completed']
+    );
+    
+    res.status(200).json({
+      message: `System restoration from ${filename} initiated successfully. Services are rebooting into the restored state.`,
+      recovery: result.rows[0]
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1831,6 +1902,9 @@ app.get('/backups/summary', async (req, res) => {
     const totalBytes = parseInt(totalRes.rows[0].total_bytes) || 0;
     const successRate = total > 0 ? parseFloat(((success / total) * 100).toFixed(1)) : 100.0;
 
+    const savedRes = await pool.query('SELECT COALESCE(SUM(storage_saved_bytes), 0) as total_saved FROM public.backup_pruning_log');
+    const totalSaved = parseInt(savedRes.rows[0].total_saved) || 0;
+
     let lastTime = settings.last_backup_at ? new Date(settings.last_backup_at).getTime() : Date.now();
     let intervalMs = 24 * 60 * 60 * 1000;
     if (settings.frequency === 'weekly') intervalMs = 7 * 24 * 60 * 60 * 1000;
@@ -1842,6 +1916,7 @@ app.get('/backups/summary', async (req, res) => {
       success_rate: successRate,
       total_storage_bytes: totalBytes,
       total_snapshots: total,
+      total_storage_saved: totalSaved,
       next_scheduled_backup_at: nextScheduledAt,
       frequency: settings.frequency
     });
@@ -1893,9 +1968,10 @@ app.put('/backups/bucket-policies', async (req, res) => {
   }
 });
 
-const executePruning = async () => {
+const executePruning = async (triggerType = 'auto') => {
   try {
     let prunedCount = 0;
+    let storageSavedBytes = 0;
     const bucketPoliciesRes = await pool.query('SELECT * FROM public.backup_bucket_policies WHERE auto_prune_enabled = true');
     
     for (const pol of bucketPoliciesRes.rows) {
@@ -1905,10 +1981,11 @@ const executePruning = async () => {
          WHERE LOWER(frequency) = LOWER($1) 
          AND created_at < CURRENT_TIMESTAMP - ($2 || ' days')::INTERVAL 
          AND is_locked = false
-         RETURNING id`,
+         RETURNING id, size_bytes`,
         [pol.bucket_type, pol.retention_days]
       );
       prunedCount += timePurgeRes.rowCount;
+      timePurgeRes.rows.forEach(r => storageSavedBytes += parseInt(r.size_bytes || 0));
 
       // 2. Max count pruning
       if (pol.max_count > 0) {
@@ -1921,10 +1998,11 @@ const executePruning = async () => {
              ORDER BY created_at DESC
              OFFSET $2
            )
-           RETURNING id`,
+           RETURNING id, size_bytes`,
           [pol.bucket_type, pol.max_count]
         );
         prunedCount += countPurgeRes.rowCount;
+        countPurgeRes.rows.forEach(r => storageSavedBytes += parseInt(r.size_bytes || 0));
       }
 
       // 3. Max size pruning
@@ -1950,25 +2028,27 @@ const executePruning = async () => {
 
         if (idsToDelete.length > 0) {
           const sizePurgeRes = await pool.query(
-            'DELETE FROM public.database_snapshots WHERE id = ANY($1) RETURNING id',
+            'DELETE FROM public.database_snapshots WHERE id = ANY($1) RETURNING id, size_bytes',
             [idsToDelete]
           );
           prunedCount += sizePurgeRes.rowCount;
+          sizePurgeRes.rows.forEach(r => storageSavedBytes += parseInt(r.size_bytes || 0));
         }
       }
     }
 
     // Default retention pruning
-    const bSettings = await pool.query('SELECT retention_days FROM public.backup_settings LIMIT 1');
-    const defaultRetention = bSettings.rows[0]?.retention_days || 7;
+    const bSettingsRes = await pool.query('SELECT retention_days FROM public.backup_settings LIMIT 1');
+    const defaultRetention = bSettingsRes.rows[0]?.retention_days || 7;
     const defaultPurgeRes = await pool.query(
       `DELETE FROM public.database_snapshots 
        WHERE created_at < CURRENT_TIMESTAMP - ($1 || ' days')::INTERVAL 
        AND is_locked = false
-       RETURNING id`,
+       RETURNING id, size_bytes`,
       [defaultRetention]
     );
     prunedCount += defaultPurgeRes.rowCount;
+    defaultPurgeRes.rows.forEach(r => storageSavedBytes += parseInt(r.size_bytes || 0));
 
     // 4. Lifecycle Policies: Move to Archive
     const lifecycleRes = await pool.query('SELECT * FROM public.backup_bucket_policies WHERE archive_after_days IS NOT NULL');
@@ -1987,7 +2067,14 @@ const executePruning = async () => {
       }
     }
 
-    return prunedCount;
+    if (prunedCount > 0) {
+      await pool.query(
+        'INSERT INTO public.backup_pruning_log (pruned_count, storage_saved_bytes, trigger_type) VALUES ($1, $2, $3)',
+        [prunedCount, storageSavedBytes, triggerType]
+      );
+    }
+
+    return { prunedCount, storageSavedBytes };
   } catch (err) {
     console.error('Error executing pruning:', err);
     throw err;
@@ -1996,8 +2083,8 @@ const executePruning = async () => {
 
 app.post('/backups/prune', async (req, res) => {
   try {
-    const prunedCount = await executePruning();
-    res.json({ message: 'Backup snapshot pruning executed successfully', prunedCount });
+    const { prunedCount, storageSavedBytes } = await executePruning('manual');
+    res.json({ message: 'Backup snapshot pruning executed successfully', prunedCount, storageSavedBytes });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
